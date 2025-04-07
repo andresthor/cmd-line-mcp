@@ -73,7 +73,11 @@ cmd-line-mcp --config /path/to/config.json
 
 ### Configuration
 
-You can configure the server using a JSON file or environment variables:
+You can configure the server using three methods:
+
+1. JSON configuration file
+2. Environment variables
+3. `.env` file
 
 #### Using a configuration file
 
@@ -85,16 +89,102 @@ cp config.json.example config.json
 cmd-line-mcp --config config.json
 ```
 
+The configuration file has this structure:
+
+```json
+{
+  "server": {
+    "name": "cmd-line-mcp",
+    "version": "0.1.0",
+    "description": "MCP server for safely executing command-line tools",
+    "log_level": "INFO"
+  },
+  "security": {
+    "session_timeout": 3600,
+    "max_output_size": 102400,
+    "allow_user_confirmation": true,
+    "require_session_id": false,
+    "allow_command_separators": true
+  },
+  "commands": {
+    "read": [
+      "ls", "pwd", "cat", "less", "head", "tail", "grep",
+      "find", "which", "du", "df", "file", "sort", "..."
+    ],
+    "write": [
+      "cp", "mv", "rm", "mkdir", "rmdir", "touch", "chmod", "..."
+    ],
+    "system": [
+      "ps", "top", "htop", "who", "netstat", "ifconfig", "..."
+    ],
+    "blocked": [
+      "sudo", "su", "bash", "sh", "zsh", "ksh", "..."
+    ],
+    "dangerous_patterns": [
+      "rm\\s+-rf\\s+/",
+      ">\\s+/dev/(sd|hd|nvme|xvd)",
+      "..."
+    ]
+  },
+  "output": {
+    "max_size": 102400,
+    "format": "text"
+  }
+}
+```
+
 #### Using environment variables
 
+You can set configuration through environment variables:
+
 ```bash
-export CMD_LINE_MCP_LOG_LEVEL=DEBUG
-export CMD_LINE_MCP_SESSION_TIMEOUT=7200
-export CMD_LINE_MCP_MAX_OUTPUT_SIZE=204800
-export CMD_LINE_MCP_ALLOW_USER_CONFIRMATION=true
-export CMD_LINE_MCP_REQUIRE_SESSION_ID=false  # For Claude Desktop compatibility
+export CMD_LINE_MCP_SERVER_LOG_LEVEL=DEBUG
+export CMD_LINE_MCP_SECURITY_SESSION_TIMEOUT=7200
+export CMD_LINE_MCP_OUTPUT_MAX_SIZE=204800
+export CMD_LINE_MCP_SECURITY_ALLOW_USER_CONFIRMATION=true
+export CMD_LINE_MCP_SECURITY_REQUIRE_SESSION_ID=false
+export CMD_LINE_MCP_SECURITY_ALLOW_COMMAND_SEPARATORS=true
+
+# For command lists (comma-separated)
+export CMD_LINE_MCP_COMMANDS_READ="ls,pwd,cat,less,head,tail,grep,find"
+export CMD_LINE_MCP_COMMANDS_WRITE="cp,mv,rm,mkdir,rmdir,touch,chmod"
+export CMD_LINE_MCP_COMMANDS_SYSTEM="ps,top,htop,who,netstat,ifconfig"
+export CMD_LINE_MCP_COMMANDS_BLOCKED="sudo,su,eval,exec"
+
 cmd-line-mcp
 ```
+
+#### Using a .env file
+
+You can create a `.env` file in the project directory with the same environment variables:
+
+```
+# Server Settings
+CMD_LINE_MCP_SERVER_LOG_LEVEL=DEBUG
+CMD_LINE_MCP_SERVER_VERSION=0.1.0
+
+# Security Settings
+CMD_LINE_MCP_SECURITY_SESSION_TIMEOUT=7200
+CMD_LINE_MCP_SECURITY_ALLOW_USER_CONFIRMATION=true
+CMD_LINE_MCP_SECURITY_REQUIRE_SESSION_ID=false
+
+# Command Lists (comma-separated)
+CMD_LINE_MCP_COMMANDS_READ=ls,pwd,cat,less,head,tail,grep,find
+CMD_LINE_MCP_COMMANDS_WRITE=cp,mv,rm,mkdir,rmdir,touch,chmod
+```
+
+Run the server with the `.env` file:
+
+```bash
+cmd-line-mcp --env /path/to/.env
+```
+
+The configuration methods follow this precedence order (from lowest to highest):
+1. Default configuration
+2. Config file from CMD_LINE_MCP_CONFIG environment variable
+3. Config file from --config parameter
+4. `.env` file
+5. Environment variables
 
 ### Using with Claude for Desktop
 
@@ -134,6 +224,55 @@ This server provides the following MCP tools to AI assistants:
 3. `list_available_commands`: List all available commands by category
 4. `approve_command_type`: Grant approval for a command type (write or system) for the current session
 5. `get_command_help`: Get detailed help about command capabilities and examples
+6. `get_configuration`: Get the current configuration settings
+7. `update_configuration`: Update configuration settings at runtime
+
+### Configuration Tool Details
+
+#### get_configuration
+
+This tool retrieves the current configuration settings, including:
+- Server settings (name, version, log level)
+- Security settings (session timeout, command separator control)
+- Command list statistics
+- Output settings
+- Separator support status
+
+Example usage:
+```python
+config = await get_configuration()
+print(f"Command separator support: {config['separator_support']}")
+```
+
+#### update_configuration
+
+This tool allows dynamic updating of the configuration at runtime:
+
+```python
+# Update security settings
+update_json = '''
+{
+  "security": {
+    "allow_command_separators": false
+  }
+}
+'''
+result = await update_configuration(config_updates=update_json, save=False)
+
+# Add a new command to the read list
+update_json = '''
+{
+  "commands": {
+    "read": ["ls", "pwd", "cat", "wc", "sort", "head", "tail"]
+  }
+}
+'''
+result = await update_configuration(config_updates=update_json, save=True)
+```
+
+- The `config_updates` parameter takes a JSON string with updates
+- The `save` parameter determines if changes are saved to the config file
+- After updating, all commands will immediately use the new settings
 
 ## Customizing Command Lists
 
@@ -148,7 +287,7 @@ You can customize the list of allowed, blocked, and categorized commands by edit
 
 ### Command Chaining Support
 
-This server supports multiple ways to chain commands:
+This server supports multiple ways to chain commands, all of which can be individually enabled or disabled in the configuration:
 
 - **Pipes (`|`)**: Connect the output of one command to the input of another
   - Example: `du -h ~/Downloads/* | grep G | sort -hr | head -10`
@@ -158,6 +297,28 @@ This server supports multiple ways to chain commands:
   - Example: `find /large/directory -name "*.log" &`
 
 All commands in a chain must be from the supported command list.
+
+You can configure command separator support in several ways:
+
+1. Using the config file:
+```json
+"security": {
+  "allow_command_separators": true
+}
+```
+
+2. Using environment variables:
+```bash
+export CMD_LINE_MCP_SECURITY_ALLOW_COMMAND_SEPARATORS=false
+```
+
+3. Using the update_configuration tool at runtime:
+```python
+update_json = '{"security": {"allow_command_separators": false}}'
+await update_configuration(config_updates=update_json)
+```
+
+You can also add specific separators to the `dangerous_patterns` list to block them individually.
 
 ## License
 
