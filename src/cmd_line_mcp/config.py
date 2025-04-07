@@ -10,7 +10,7 @@ from pathlib import Path
 DEFAULT_CONFIG = {
     "server": {
         "name": "cmd-line-mcp",
-        "version": "0.1.0",
+        "version": "0.2.0",
         "description": "MCP server for safely executing command-line tools",
         "log_level": "INFO",
     },

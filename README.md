@@ -95,7 +95,7 @@ The configuration file has this structure:
 {
   "server": {
     "name": "cmd-line-mcp",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "description": "MCP server for safely executing command-line tools",
     "log_level": "INFO"
   },
@@ -161,7 +161,7 @@ You can create a `.env` file in the project directory with the same environment 
 ```
 # Server Settings
 CMD_LINE_MCP_SERVER_LOG_LEVEL=DEBUG
-CMD_LINE_MCP_SERVER_VERSION=0.1.0
+CMD_LINE_MCP_SERVER_VERSION=0.2.0
 
 # Security Settings
 CMD_LINE_MCP_SECURITY_SESSION_TIMEOUT=7200
