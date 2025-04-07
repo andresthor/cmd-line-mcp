@@ -75,9 +75,14 @@ cmd-line-mcp --config /path/to/config.json
 
 You can configure the server using three methods:
 
-1. JSON configuration file
-2. Environment variables
-3. `.env` file
+1. JSON configuration file (recommended for complete configuration)
+2. Environment variables (for overriding specific settings)
+3. `.env` file (for environment-specific overrides)
+
+**Configuration Best Practices:**
+- Use the JSON configuration file as your primary configuration method
+- Use environment variables or `.env` files for environment-specific overrides
+- JSON provides comprehensive configuration, while env vars are better for quick overrides
 
 #### Using a configuration file
 
@@ -133,58 +138,60 @@ The configuration file has this structure:
 }
 ```
 
-#### Using environment variables
+#### Using environment variables and .env files for overrides
 
-You can set configuration through environment variables:
+While the JSON configuration file is recommended for comprehensive configuration, you can use environment variables or a `.env` file to override specific settings. This is particularly useful for:
+
+1. Deploying to different environments (dev, test, prod)
+2. Overriding specific settings without modifying the JSON file
+3. Setting environment-specific values like log levels or timeouts
+
+**Environment Variables Example:**
 
 ```bash
+# Override log level for debugging
 export CMD_LINE_MCP_SERVER_LOG_LEVEL=DEBUG
+
+# Extend session timeout
 export CMD_LINE_MCP_SECURITY_SESSION_TIMEOUT=7200
-export CMD_LINE_MCP_OUTPUT_MAX_SIZE=204800
-export CMD_LINE_MCP_SECURITY_ALLOW_USER_CONFIRMATION=true
-export CMD_LINE_MCP_SECURITY_REQUIRE_SESSION_ID=false
-export CMD_LINE_MCP_SECURITY_ALLOW_COMMAND_SEPARATORS=true
 
-# For command lists (comma-separated)
-export CMD_LINE_MCP_COMMANDS_READ="ls,pwd,cat,less,head,tail,grep,find"
-export CMD_LINE_MCP_COMMANDS_WRITE="cp,mv,rm,mkdir,rmdir,touch,chmod"
-export CMD_LINE_MCP_COMMANDS_SYSTEM="ps,top,htop,who,netstat,ifconfig"
-export CMD_LINE_MCP_COMMANDS_BLOCKED="sudo,su,eval,exec"
+# Add a custom command to the read commands list (comma-separated)
+export CMD_LINE_MCP_COMMANDS_READ="wc,nl,column,jq" 
 
-cmd-line-mcp
+cmd-line-mcp --config /path/to/config.json
 ```
 
-#### Using a .env file
+**Using a `.env` file for overrides:**
 
-You can create a `.env` file in the project directory with the same environment variables:
+Create a `.env` file with only the settings you want to override:
 
 ```
-# Server Settings
+# Set to DEBUG for more detailed logs
 CMD_LINE_MCP_SERVER_LOG_LEVEL=DEBUG
-CMD_LINE_MCP_SERVER_VERSION=0.2.0
 
-# Security Settings
+# Extend session timeout to 2 hours
 CMD_LINE_MCP_SECURITY_SESSION_TIMEOUT=7200
-CMD_LINE_MCP_SECURITY_ALLOW_USER_CONFIRMATION=true
-CMD_LINE_MCP_SECURITY_REQUIRE_SESSION_ID=false
 
-# Command Lists (comma-separated)
-CMD_LINE_MCP_COMMANDS_READ=ls,pwd,cat,less,head,tail,grep,find
-CMD_LINE_MCP_COMMANDS_WRITE=cp,mv,rm,mkdir,rmdir,touch,chmod
+# For Claude Desktop compatibility
+CMD_LINE_MCP_SECURITY_REQUIRE_SESSION_ID=false
 ```
 
-Run the server with the `.env` file:
+Run the server with the base config plus `.env` overrides:
 
 ```bash
-cmd-line-mcp --env /path/to/.env
+cmd-line-mcp --config /path/to/config.json --env /path/to/.env
 ```
+
+**Configuration Precedence Order:**
 
 The configuration methods follow this precedence order (from lowest to highest):
-1. Default configuration
+1. Default configuration (built-in)
 2. Config file from CMD_LINE_MCP_CONFIG environment variable
 3. Config file from --config parameter
 4. `.env` file
-5. Environment variables
+5. Environment variables (highest precedence)
+
+This means environment variables will override values from the `.env` file, which will override values from the JSON configuration file.
 
 ### Using with Claude for Desktop
 
@@ -199,6 +206,24 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json`:
     "cmd-line": {
       "command": "/path/to/venv/bin/cmd-line-mcp",
       "args": ["--config", "/path/to/config.json"]
+    }
+  }
+}
+```
+
+You can also specify environment variable overrides directly in the Claude Desktop configuration:
+
+```json
+{
+  "mcpServers": {
+    "cmd-line": {
+      "command": "/path/to/venv/bin/cmd-line-mcp",
+      "args": ["--config", "/path/to/config.json"],
+      "env": {
+        "CMD_LINE_MCP_SERVER_LOG_LEVEL": "DEBUG",
+        "CMD_LINE_MCP_SECURITY_SESSION_TIMEOUT": "7200",
+        "CMD_LINE_MCP_SECURITY_REQUIRE_SESSION_ID": "false"
+      }
     }
   }
 }
@@ -276,8 +301,56 @@ result = await update_configuration(config_updates=update_json, save=True)
 
 ## Customizing Command Lists
 
-You can customize the list of allowed, blocked, and categorized commands by editing the configuration file. This allows you to:
+You can customize the list of allowed, blocked, and categorized commands using either the configuration file or environment variable overrides.
 
+### Using JSON Configuration
+
+To customize commands in the JSON configuration file:
+
+```json
+{
+  "commands": {
+    "read": [
+      "ls", "pwd", "cat", "less", "head", "tail", "grep",
+      "wc", "nl", "column", "jq" 
+    ],
+    "system": [
+      "ps", "top", "htop", "who", "netstat", "ifconfig", "ping",
+      "kubectl", "docker", "aws", "gcloud"
+    ],
+    "blocked": [
+      "sudo", "su", "bash", "sh", "zsh", "ksh", "csh", "fish",
+      "npm", "pip", "apt", "apt-get", "yum", "brew"
+    ]
+  }
+}
+```
+
+### Using Environment Variables for Additions
+
+Environment variables will merge with (not replace) existing command lists:
+
+```bash
+# Add these commands to the read list
+export CMD_LINE_MCP_COMMANDS_READ="wc,nl,column,jq"
+
+# Add these commands to the system list
+export CMD_LINE_MCP_COMMANDS_SYSTEM="kubectl,docker,aws"
+
+# Add these commands to the blocked list
+export CMD_LINE_MCP_COMMANDS_BLOCKED="npm,pip,apt-get"
+```
+
+Or in a `.env` file:
+```
+# Add these to the read commands
+CMD_LINE_MCP_COMMANDS_READ=wc,nl,column,jq
+
+# Add these to the blocked commands
+CMD_LINE_MCP_COMMANDS_BLOCKED=npm,pip,apt-get
+```
+
+This flexibility allows you to:
 - Add custom commands to the appropriate category
 - Block additional commands
 - Add new dangerous patterns to match against
@@ -307,9 +380,11 @@ You can configure command separator support in several ways:
 }
 ```
 
-2. Using environment variables:
+2. Using environment variables for quick overrides:
 ```bash
+# Start with the base configuration file, but override a single setting
 export CMD_LINE_MCP_SECURITY_ALLOW_COMMAND_SEPARATORS=false
+cmd-line-mcp --config /path/to/config.json
 ```
 
 3. Using the update_configuration tool at runtime:
