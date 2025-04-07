@@ -457,11 +457,13 @@ class Config:
 
         # Check if there's a pattern that would block these separators
         for pattern in dangerous_patterns:
-            if ";" in pattern:
+            # Be very careful with the pipe character checking
+            # Only block if the pipe character is the ENTIRE pattern
+            if pattern == ";" or pattern == ";":
                 separators["semicolon"] = False
-            if "&" in pattern:
+            if pattern == "&" or pattern == "&":
                 separators["ampersand"] = False
-            if r"\|" in pattern or "|" in pattern:
+            if pattern == "|" or pattern == r"\|":
                 separators["pipe"] = False
 
         return separators

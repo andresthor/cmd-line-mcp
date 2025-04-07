@@ -115,6 +115,14 @@ class CommandLineMCP:
                 "command": "head -n 20 ~/Documents/notes.txt",
                 "description": "View the first 20 lines of a file",
             },
+            {
+                "command": 'ls -la | awk \'{print $1, $9}\'',
+                "description": "List files showing permissions and names using awk",
+            },
+            {
+                "command": 'cat file.txt | awk \'{if($1>10) print $0}\'',
+                "description": "Filter lines where first column is greater than 10",
+            },
         ]
 
         # Register tools
@@ -231,6 +239,14 @@ class CommandLineMCP:
             # Get the latest command lists and separator support
             command_lists = self.config.get_effective_command_lists()
             separator_support = self.config.has_separator_support()
+            
+            # Log the separator support for debugging
+            logger.info(f"Separator support status: {separator_support}")
+            logger.info(f"allow_command_separators setting: {self.config.get('security', 'allow_command_separators')}")
+            
+            # Extra check for pipe character in dangerous patterns
+            pipe_in_patterns = any("|" in p or r"\|" in p for p in command_lists["dangerous_patterns"])
+            logger.info(f"Pipe character found in dangerous patterns: {pipe_in_patterns}")
 
             # Update capabilities
             updated_capabilities = {
@@ -270,6 +286,8 @@ class CommandLineMCP:
                     "text_searching": "Use 'grep \"pattern\" <file>' to search in files",
                     "file_viewing": "Use 'cat', 'head', or 'tail' for viewing files",
                     "sorting": "Use 'sort' with options like -n (numeric), -r (reverse), -h (human readable sizes)",
+                    "text_processing": "Use 'awk' for advanced text processing. For example: 'ls -la | awk \"{print $1, $9}\"' to show permissions and filenames",
+                    "column_filtering": "Use 'awk' to filter by column values: 'cat data.txt | awk \"{if($3 > 100) print}\"' to show lines where column 3 exceeds 100",
                 },
                 "permissions": {
                     "read_commands": "Can be executed without confirmation",
