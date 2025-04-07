@@ -328,26 +328,52 @@ To customize commands in the JSON configuration file:
 
 ### Using Environment Variables for Additions
 
-Environment variables will merge with (not replace) existing command lists:
+Environment variables will merge with (not replace) existing command lists. This allows you to add additional commands without losing the defaults:
 
 ```bash
-# Add these commands to the read list
-export CMD_LINE_MCP_COMMANDS_READ="wc,nl,column,jq"
+# Add awk and jq to the read commands list (they'll be merged with existing commands)
+export CMD_LINE_MCP_COMMANDS_READ="awk,jq"
 
-# Add these commands to the system list
+# Add container tools to the system commands list
 export CMD_LINE_MCP_COMMANDS_SYSTEM="kubectl,docker,aws"
 
-# Add these commands to the blocked list
+# Add package managers to the blocked commands list
 export CMD_LINE_MCP_COMMANDS_BLOCKED="npm,pip,apt-get"
+```
+
+When using these commands in pipelines, they'll be properly recognized:
+
+```bash
+# Now this will work because awk has been added to allowed commands
+ls -la | awk '{print $1}'
+
+# And cloud/container commands will work too
+kubectl get pods | grep "Running"
 ```
 
 Or in a `.env` file:
 ```
-# Add these to the read commands
-CMD_LINE_MCP_COMMANDS_READ=wc,nl,column,jq
+# Add text processing tools to the read commands
+CMD_LINE_MCP_COMMANDS_READ=awk,sed,jq
 
-# Add these to the blocked commands
+# Add package managers to the blocked commands
 CMD_LINE_MCP_COMMANDS_BLOCKED=npm,pip,apt-get
+```
+
+Example: Using in Claude Desktop config for command-line tool access:
+```json
+{
+  "mcpServers": {
+    "cmd-line": {
+      "command": "/path/to/venv/bin/cmd-line-mcp",
+      "args": ["--config", "/path/to/config.json"],
+      "env": {
+        "CMD_LINE_MCP_COMMANDS_READ": "awk,sed,jq",
+        "CMD_LINE_MCP_SERVER_LOG_LEVEL": "DEBUG"
+      }
+    }
+  }
+}
 ```
 
 This flexibility allows you to:
