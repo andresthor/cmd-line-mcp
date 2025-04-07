@@ -446,3 +446,62 @@ def test_command_type_elevation():
     )
     assert result["is_valid"] is True
     assert result["command_type"] == "system"
+
+
+def test_custom_command_list():
+    """Test validation with custom command lists to ensure they're respected."""
+    # Custom command lists including awk and jq
+    read_commands = ["ls", "cat", "grep", "awk", "jq"]
+    write_commands = ["mkdir", "touch"]
+    system_commands = ["ps"]
+    blocked_commands = ["sudo"]
+    dangerous_patterns = []
+
+    # Test awk in a simple command
+    result = validate_command(
+        "awk '{print $1}' file.txt",
+        read_commands,
+        write_commands,
+        system_commands,
+        blocked_commands,
+        dangerous_patterns,
+    )
+    assert result["is_valid"] is True
+    assert result["command_type"] == "read"
+
+    # Test awk in a pipeline with other commands
+    result = validate_command(
+        "cat file.txt | awk '{print $1}' | grep pattern",
+        read_commands,
+        write_commands,
+        system_commands,
+        blocked_commands,
+        dangerous_patterns,
+    )
+    assert result["is_valid"] is True
+    assert result["command_type"] == "read"
+
+    # Test jq in a pipeline
+    result = validate_command(
+        "cat data.json | jq '.name'",
+        read_commands,
+        write_commands,
+        system_commands,
+        blocked_commands,
+        dangerous_patterns,
+    )
+    assert result["is_valid"] is True
+    assert result["command_type"] == "read"
+
+    # Verify command not in custom list is rejected
+    result = validate_command(
+        "sed 's/old/new/g' file.txt",  # sed not in our custom list
+        read_commands,
+        write_commands,
+        system_commands,
+        blocked_commands,
+        dangerous_patterns,
+    )
+    assert result["is_valid"] is False
+    assert "not recognized" in result["error"]
+    assert "sed" in result["error"]

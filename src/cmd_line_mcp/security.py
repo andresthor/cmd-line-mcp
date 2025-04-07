@@ -5,7 +5,8 @@ import shlex
 from typing import Dict, List, Optional, Tuple, Union
 
 # These constant lists are just for reference and backward compatibility
-# Actual command lists should come from the Config object
+# Actual command lists should come from the Config object and be passed to validate_command
+# DO NOT use these lists directly in the code - always pass in the current command lists from Config
 READ_COMMANDS = [
     "ls",
     "pwd",
@@ -149,27 +150,38 @@ def parse_command(command: str) -> Tuple[str, List[str]]:
 
 def validate_command(
     command: str,
-    read_commands: List[str] = READ_COMMANDS,
-    write_commands: List[str] = WRITE_COMMANDS,
-    system_commands: List[str] = SYSTEM_COMMANDS,
-    blocked_commands: List[str] = BLOCKED_COMMANDS,
-    dangerous_patterns: List[str] = DANGEROUS_PATTERNS,
+    read_commands: List[str] = None,
+    write_commands: List[str] = None,
+    system_commands: List[str] = None,
+    blocked_commands: List[str] = None,
+    dangerous_patterns: List[str] = None,
     allow_command_separators: bool = True,
 ) -> Dict[str, Union[bool, str, Optional[str]]]:
     """Validate a command for security.
 
     Args:
         command: The command to validate
-        read_commands: List of read-only commands
-        write_commands: List of write commands
-        system_commands: List of system commands
-        blocked_commands: List of blocked commands
-        dangerous_patterns: List of dangerous patterns to block
+        read_commands: List of read-only commands (defaults to READ_COMMANDS if None)
+        write_commands: List of write commands (defaults to WRITE_COMMANDS if None)
+        system_commands: List of system commands (defaults to SYSTEM_COMMANDS if None)
+        blocked_commands: List of blocked commands (defaults to BLOCKED_COMMANDS if None)
+        dangerous_patterns: List of dangerous patterns to block (defaults to DANGEROUS_PATTERNS if None)
         allow_command_separators: Whether to allow command separators (|, ;, &)
 
     Returns:
         A dictionary with validation results
     """
+    # Use default command lists if not provided
+    if read_commands is None:
+        read_commands = READ_COMMANDS
+    if write_commands is None:
+        write_commands = WRITE_COMMANDS
+    if system_commands is None:
+        system_commands = SYSTEM_COMMANDS
+    if blocked_commands is None:
+        blocked_commands = BLOCKED_COMMANDS
+    if dangerous_patterns is None:
+        dangerous_patterns = DANGEROUS_PATTERNS
     result = {"is_valid": False, "command_type": None, "error": None}
 
     # Empty command
