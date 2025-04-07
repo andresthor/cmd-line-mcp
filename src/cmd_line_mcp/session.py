@@ -1,16 +1,16 @@
 """Session management for the command-line MCP server."""
 
 import time
-from typing import Dict, Optional, Set
+from typing import Dict, Any
 
 class SessionManager:
     """Manage user sessions for command permissions."""
     
     def __init__(self):
         """Initialize the session manager."""
-        self.sessions: Dict[str, Dict[str, any]] = {}
+        self.sessions: Dict[str, Dict[str, Any]] = {}
         
-    def get_session(self, session_id: str) -> Dict[str, any]:
+    def get_session(self, session_id: str) -> Dict[str, Any]:
         """Get a session by ID, creating it if it doesn't exist.
         
         Args:
@@ -23,8 +23,8 @@ class SessionManager:
             self.sessions[session_id] = {
                 "created_at": time.time(),
                 "last_active": time.time(),
-                "approved_commands": set(),
-                "approved_command_types": set(),
+                "approved_commands": set[str](),
+                "approved_command_types": set[str](),
             }
         
         # Update last active time

@@ -2,8 +2,7 @@
 
 import os
 import json
-from pathlib import Path
-from typing import Dict, List, Optional, Any
+from typing import Dict, Optional, Any
 
 # Default configuration
 DEFAULT_CONFIG = {
@@ -17,6 +16,7 @@ DEFAULT_CONFIG = {
         "session_timeout": 3600,  # 1 hour
         "max_output_size": 102400,  # 100KB
         "allow_user_confirmation": True,
+        "require_session_id": False,  # For Claude Desktop compatibility
     },
     "commands": {
         "read_commands": [
@@ -81,17 +81,25 @@ class Config:
             self._load_config(config_path)
             
         # Override with environment variables
-        if os.environ.get("CMD_LINE_MCP_LOG_LEVEL"):
-            self.config["server"]["log_level"] = os.environ.get("CMD_LINE_MCP_LOG_LEVEL")
+        log_level = os.environ.get("CMD_LINE_MCP_LOG_LEVEL")
+        if log_level is not None:
+            self.config["server"]["log_level"] = log_level
             
-        if os.environ.get("CMD_LINE_MCP_SESSION_TIMEOUT"):
-            self.config["security"]["session_timeout"] = int(os.environ.get("CMD_LINE_MCP_SESSION_TIMEOUT", "3600"))
+        session_timeout = os.environ.get("CMD_LINE_MCP_SESSION_TIMEOUT")
+        if session_timeout is not None:
+            self.config["security"]["session_timeout"] = int(session_timeout)
             
-        if os.environ.get("CMD_LINE_MCP_MAX_OUTPUT_SIZE"):
-            self.config["security"]["max_output_size"] = int(os.environ.get("CMD_LINE_MCP_MAX_OUTPUT_SIZE", "102400"))
+        max_output_size = os.environ.get("CMD_LINE_MCP_MAX_OUTPUT_SIZE")
+        if max_output_size is not None:
+            self.config["security"]["max_output_size"] = int(max_output_size)
             
-        if os.environ.get("CMD_LINE_MCP_ALLOW_USER_CONFIRMATION"):
-            self.config["security"]["allow_user_confirmation"] = os.environ.get("CMD_LINE_MCP_ALLOW_USER_CONFIRMATION").lower() in ["true", "1", "yes"]
+        allow_user_confirmation = os.environ.get("CMD_LINE_MCP_ALLOW_USER_CONFIRMATION")
+        if allow_user_confirmation is not None:
+            self.config["security"]["allow_user_confirmation"] = allow_user_confirmation.lower() in ["true", "1", "yes"]
+            
+        require_session_id = os.environ.get("CMD_LINE_MCP_REQUIRE_SESSION_ID")
+        if require_session_id is not None:
+            self.config["security"]["require_session_id"] = require_session_id.lower() in ["true", "1", "yes"]
     
     def _load_config(self, config_path: str) -> None:
         """Load configuration from a file.

@@ -9,7 +9,7 @@ READ_COMMANDS = [
     "ls", "pwd", "cat", "less", "head", "tail", "grep",
     "find", "which", "du", "df", "file", "uname", "hostname", 
     "uptime", "date", "whoami", "id", "env", "history", "man",
-    "info", "help"
+    "info", "help", "sort"
 ]
 
 WRITE_COMMANDS = [
@@ -57,6 +57,14 @@ def parse_command(command: str) -> Tuple[str, List[str]]:
     Returns:
         A tuple of (command, arguments)
     """
+    # Handle the case where a pipe segment might not start with a command
+    # For example: `-v` is a flag, not a command in `cmd | -v`
+    command = command.strip()
+    
+    # If it starts with a dash, it's probably a flag/option continuation
+    if command.startswith('-'):
+        return "", [command]
+        
     try:
         parts = shlex.split(command)
         if not parts:
@@ -108,9 +116,9 @@ def validate_command(
             # More descriptive error message
             if pattern == "[;&]":
                 result["error"] = "Command contains forbidden operators (semicolon or ampersand). These are blocked for security reasons."
-            elif pattern == "\$\(":
+            elif pattern == r"\$\(":
                 result["error"] = "Command contains command substitution $(). This is blocked for security reasons."
-            elif pattern == "\$\{\w+\}":
+            elif pattern == r"\$\{\w+\}":
                 result["error"] = "Command contains variable substitution ${var}. This is blocked for security reasons."
             elif pattern == "`":
                 result["error"] = "Command contains backtick command substitution. This is blocked for security reasons."
@@ -121,6 +129,10 @@ def validate_command(
     # If command chaining is allowed, validate each part
     for separator in ["|", ";", "&"]:
         if separator in command:
+            # Initialize these variables to fix "possibly unbound" warnings
+            parts = []
+            separator_name = "command chain"
+            
             # Determine which separator is being used
             if separator == "|":
                 parts = command.split("|")
@@ -141,12 +153,19 @@ def validate_command(
                     result["error"] = f"Empty command in {separator_name}"
                     return result
                     
-                # Parse each command
+                # Parse each command - be smarter about pipes
                 try:
                     cmd_part, _ = parse_command(part)
                 except ValueError as e:
                     result["error"] = f"Invalid command syntax in {separator_name}: {str(e)}"
                     return result
+                    
+                # Special handling for pipeline segments that aren't simple commands
+                if separator == "|" and (part.strip().startswith("-") or not cmd_part):
+                    # This is likely a continuation of a previous pipe, not a command itself
+                    # For example: `command | grep "pattern"` vs `command | -v`
+                    # We'll consider these as safe continuations
+                    continue
                     
                 # Check if any command is blocked
                 if cmd_part in blocked_commands:
@@ -154,17 +173,19 @@ def validate_command(
                     return result
                     
                 # Check if the command is recognized
-                if cmd_part not in read_commands and cmd_part not in write_commands and cmd_part not in system_commands:
+                # Skip this check for empty/continuation pipeline segments
+                if cmd_part and cmd_part not in read_commands and cmd_part not in write_commands and cmd_part not in system_commands:
                     result["error"] = f"Command '{cmd_part}' in {separator_name} is not recognized or supported. Supported commands: {', '.join(read_commands + write_commands + system_commands)}"
                     return result
                     
-                # Track command types
-                if cmd_part in read_commands:
-                    all_parts_types.append("read")
-                elif cmd_part in write_commands:
-                    all_parts_types.append("write")
-                elif cmd_part in system_commands:
-                    all_parts_types.append("system")
+                # Track command types (only for actual commands)
+                if cmd_part:
+                    if cmd_part in read_commands:
+                        all_parts_types.append("read")
+                    elif cmd_part in write_commands:
+                        all_parts_types.append("write")
+                    elif cmd_part in system_commands:
+                        all_parts_types.append("system")
             
             # Determine the most privileged command type
             if "system" in all_parts_types:

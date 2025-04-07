@@ -8,14 +8,15 @@
   "security": {
     "session_timeout": 3600,
     "max_output_size": 102400,
-    "allow_user_confirmation": true
+    "allow_user_confirmation": true,
+    "require_session_id": false
   },
   "commands": {
     "read_commands": [
       "ls", "pwd", "cat", "less", "head", "tail", "grep",
       "find", "which", "du", "df", "file", "uname", "hostname", 
       "uptime", "date", "whoami", "id", "env", "history", "man",
-      "info", "help"
+      "info", "help", "sort"
     ],
     "write_commands": [
       "cp", "mv", "rm", "mkdir", "rmdir", "touch", "chmod", "chown",
@@ -46,7 +47,6 @@
       "2>&1",
       "\\$\\(",
       "\\$\\{\\w+\\}",
-      "[;&|]",
       "`"
     ]
   }

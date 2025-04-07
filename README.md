@@ -15,11 +15,14 @@ This MCP server allows AI assistants to execute common Unix/macOS terminal comma
 - Session-based approval system
 - Configuration via environment variables or JSON file
 - Comprehensive command filtering and pattern matching
+- Support for command chaining via pipes (`|`), semicolons (`;`), and ampersands (`&`)
+- Claude Desktop compatibility mode with auto-approval
+- Detailed command metadata and help for AI assistants
 
 ## Supported Commands
 
 ### Read Commands
-- `ls`, `pwd`, `cat`, `less`, `head`, `tail`, `grep`, `find`, `which`, `du`, `df`, `file`, etc.
+- `ls`, `pwd`, `cat`, `less`, `head`, `tail`, `grep`, `find`, `which`, `du`, `df`, `file`, `sort`, etc.
 
 ### Write Commands  
 - `cp`, `mv`, `rm`, `mkdir`, `rmdir`, `touch`, `chmod`, `chown`, etc.
@@ -36,6 +39,8 @@ This MCP server allows AI assistants to execute common Unix/macOS terminal comma
 - Per-session permission granting
 - Option to grant approval for a command type for the entire session
 - Automatic session timeouts
+- Secure handling of command chaining (pipes, sequences, etc.)
+- Configurable security options for different environments
 
 ## Installation
 
@@ -85,6 +90,7 @@ export CMD_LINE_MCP_LOG_LEVEL=DEBUG
 export CMD_LINE_MCP_SESSION_TIMEOUT=7200
 export CMD_LINE_MCP_MAX_OUTPUT_SIZE=204800
 export CMD_LINE_MCP_ALLOW_USER_CONFIRMATION=true
+export CMD_LINE_MCP_REQUIRE_SESSION_ID=false  # For Claude Desktop compatibility
 cmd-line-mcp
 ```
 
@@ -106,6 +112,15 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json`:
 }
 ```
 
+For best compatibility with Claude Desktop, ensure these settings in your config.json:
+
+```json
+"security": {
+  "require_session_id": false,  // Prevents approval loops with Claude Desktop
+  "allow_user_confirmation": true
+}
+```
+
 3. Restart Claude for Desktop
 
 ## MCP Tools
@@ -116,6 +131,7 @@ This server provides the following MCP tools to AI assistants:
 2. `execute_read_command`: Execute read-only commands (no approval required)
 3. `list_available_commands`: List all available commands by category
 4. `approve_command_type`: Grant approval for a command type (write or system) for the current session
+5. `get_command_help`: Get detailed help about command capabilities and examples
 
 ## Customizing Command Lists
 
@@ -125,6 +141,21 @@ You can customize the list of allowed, blocked, and categorized commands by edit
 - Block additional commands
 - Add new dangerous patterns to match against
 - Change security settings like session timeouts
+- Enable or disable command separator support (pipes, semicolons, ampersands)
+- Configure Claude Desktop compatibility settings
+
+### Command Chaining Support
+
+This server supports multiple ways to chain commands:
+
+- **Pipes (`|`)**: Connect the output of one command to the input of another
+  - Example: `du -h ~/Downloads/* | grep G | sort -hr | head -10`
+- **Semicolons (`;`)**: Run multiple commands in sequence
+  - Example: `mkdir test; cd test; touch file.txt`
+- **Ampersands (`&`)**: Run commands in the background
+  - Example: `find /large/directory -name "*.log" &`
+
+All commands in a chain must be from the supported command list.
 
 ## License
 

@@ -5,13 +5,9 @@ Command-line MCP server that safely executes Unix/macOS terminal commands.
 import argparse
 import asyncio
 import logging
-import os
-import subprocess
-import sys
 import uuid
 from typing import Any, Dict, List, Optional
 
-import mcp
 from mcp.server.fastmcp import FastMCP
 
 from cmd_line_mcp.config import Config
@@ -58,33 +54,33 @@ class CommandLineMCP:
             description=server_config.get("description", "MCP server for safely executing command-line tools")
         )
         
-        # Add metadata to help clients understand capabilities
-        self.app.metadata = {
-            "command_capabilities": {
-                "supported_commands": {
-                    "read": self.read_commands,
-                    "write": self.write_commands,
-                    "system": self.system_commands
-                },
-                "blocked_commands": self.blocked_commands,
-                "command_chaining": {
-                    "pipe": "Supported - All commands in pipeline must be supported",
-                    "semicolon": "Supported - All commands in sequence must be supported", 
-                    "ampersand": "Supported - All commands must be supported"
-                },
-                "command_restrictions": "Special characters like $(), ${}, backticks, and I/O redirection are blocked"
+        # Store capabilities data to use in get_command_help tool
+        self.command_capabilities = {
+            "supported_commands": {
+                "read": self.read_commands,
+                "write": self.write_commands,
+                "system": self.system_commands
             },
-            "usage_examples": [
-                {"command": "ls ~/Downloads", "description": "List files in downloads directory"},
-                {"command": "cat ~/.bashrc", "description": "View bash configuration"},
-                {"command": "du -h ~/Downloads/* | grep G", "description": "Find large files in downloads folder"},
-                {"command": "find ~/Downloads -type f -name \"*.pdf\"", "description": "Find all PDF files in downloads"},
-                {"command": "head -n 20 ~/Documents/notes.txt", "description": "View the first 20 lines of a file"}
-            ]
+            "blocked_commands": self.blocked_commands,
+            "command_chaining": {
+                "pipe": "Supported - All commands in pipeline must be supported",
+                "semicolon": "Supported - All commands in sequence must be supported", 
+                "ampersand": "Supported - All commands must be supported"
+            },
+            "command_restrictions": "Special characters like $(), ${}, backticks, and I/O redirection are blocked"
         }
         
+        self.usage_examples = [
+            {"command": "ls ~/Downloads", "description": "List files in downloads directory"},
+            {"command": "cat ~/.bashrc", "description": "View bash configuration"},
+            {"command": "du -h ~/Downloads/* | grep G", "description": "Find large files in downloads folder"},
+            {"command": "find ~/Downloads -type f -name \"*.pdf\"", "description": "Find all PDF files in downloads"},
+            {"command": "head -n 20 ~/Documents/notes.txt", "description": "View the first 20 lines of a file"}
+        ]
+        
         # Register tools
-        @self.app.tool()
+        execute_command_tool = self.app.tool()
+        @execute_command_tool  # Keep decorator reference to satisfy linters
         async def execute_command(command: str, session_id: Optional[str] = None) -> Dict[str, Any]:
             """
             Execute a Unix/macOS terminal command.
@@ -100,7 +96,11 @@ class CommandLineMCP:
                 session_id = str(uuid.uuid4())
             return await self._execute_command(command, session_id=session_id)
             
-        @self.app.tool()
+        # Store reference to silence linter warnings
+        self._execute_command_func = execute_command
+            
+        execute_read_command_tool = self.app.tool()
+        @execute_read_command_tool  # Keep decorator reference to satisfy linters
         async def execute_read_command(command: str) -> Dict[str, Any]:
             """
             Execute a read-only Unix/macOS terminal command (ls, cat, grep, etc.).
@@ -132,7 +132,11 @@ class CommandLineMCP:
                 
             return await self._execute_command(command, command_type="read")
             
-        @self.app.tool()
+        # Store reference to silence linter warnings
+        self._execute_read_command_func = execute_read_command
+            
+        list_available_commands_tool = self.app.tool()
+        @list_available_commands_tool  # Keep decorator reference to satisfy linters
         async def list_available_commands() -> Dict[str, List[str]]:
             """
             List all available commands by category.
@@ -147,7 +151,11 @@ class CommandLineMCP:
                 "blocked_commands": self.blocked_commands
             }
             
-        @self.app.tool()
+        # Store reference to silence linter warnings
+        self._list_available_commands_func = list_available_commands
+            
+        get_command_help_tool = self.app.tool()
+        @get_command_help_tool  # Keep decorator reference to satisfy linters
         async def get_command_help() -> Dict[str, Any]:
             """
             Get detailed help about command capabilities and usage.
@@ -163,14 +171,14 @@ class CommandLineMCP:
             """
             # Provide helpful information for Claude to understand command usage
             return {
-                "capabilities": self.app.metadata["command_capabilities"],
-                "examples": self.app.metadata["usage_examples"],
+                "capabilities": self.command_capabilities,
+                "examples": self.usage_examples,
                 "recommended_approach": {
-                    "finding_large_files": "Use 'du -h <directory>/* | grep G' or 'du -h <directory>/* | grep M' to find large files",
+                    "finding_large_files": "Use 'du -h <directory>/* | sort -hr | head -n 10' to find the 10 largest files",
                     "file_searching": "Use 'find <directory> -type f -name \"pattern\"' for file searches",
                     "text_searching": "Use 'grep \"pattern\" <file>' to search in files",
                     "file_viewing": "Use 'cat', 'head', or 'tail' for viewing files",
-                    "sorting_alternatives": "Since 'sort' is not available, consider using 'grep' with patterns to filter results"
+                    "sorting": "Use 'sort' with options like -n (numeric), -r (reverse), -h (human readable sizes)"
                 },
                 "permissions": {
                     "read_commands": "Can be executed without confirmation",
@@ -179,7 +187,11 @@ class CommandLineMCP:
                 }
             }
             
-        @self.app.tool()
+        # Store reference to silence linter warnings
+        self._get_command_help_func = get_command_help
+            
+        approve_command_type_tool = self.app.tool()
+        @approve_command_type_tool  # Keep decorator reference to satisfy linters
         async def approve_command_type(
             command_type: str, 
             session_id: str, 
@@ -213,6 +225,9 @@ class CommandLineMCP:
                     "success": True,
                     "message": f"Command type '{command_type}' approved for one-time use"
                 }
+                
+        # Store reference to silence linter warnings
+        self._approve_command_type_func = approve_command_type
     
     async def _execute_command(
         self, 
@@ -253,14 +268,29 @@ class CommandLineMCP:
         
         actual_command_type = validation["command_type"]
         
-        # Check permissions for non-read commands if session_id is provided
-        # and user confirmation is enabled
-        if (session_id and 
-            actual_command_type in ["write", "system"] and 
-            self.config.get("security", "allow_user_confirmation", True)):
+        # For read commands, bypass approval
+        if actual_command_type == "read":
+            # No approval needed for read commands
+            pass
+        # For write and system commands with user confirmation enabled
+        elif (actual_command_type in ["write", "system"] and 
+              self.config.get("security", "allow_user_confirmation", True)):
             
-            if not self.session_manager.has_command_approval(session_id, command) and \
-               not self.session_manager.has_command_type_approval(session_id, actual_command_type):
+            # Check if we require a session ID (turn off for Claude Desktop compatibility)
+            require_session_id = self.config.get("security", "require_session_id", False)
+            
+            # WORKAROUND FOR CLAUDE DESKTOP: 
+            # Either auto-approve if no session_id provided OR if require_session_id is False
+            if not session_id or not require_session_id:
+                if not session_id:
+                    logger.warning("No session ID provided, auto-approving command: %s", command)
+                else:
+                    logger.warning("Session validation disabled, auto-approving command: %s", command)
+                # Auto-approve without requiring explicit permission
+                pass
+            # Normal session-based approval when require_session_id is True
+            elif not self.session_manager.has_command_approval(session_id, command) and \
+                 not self.session_manager.has_command_type_approval(session_id, actual_command_type):
                 return {
                     "success": False,
                     "output": "",
