@@ -4,7 +4,8 @@ import re
 import shlex
 from typing import Dict, List, Optional, Tuple, Union
 
-# Default command lists - these will be overridden by config
+# These constant lists are just for reference and backward compatibility
+# Actual command lists should come from the Config object
 READ_COMMANDS = [
     "ls", "pwd", "cat", "less", "head", "tail", "grep",
     "find", "which", "du", "df", "file", "uname", "hostname", 
@@ -14,12 +15,12 @@ READ_COMMANDS = [
 
 WRITE_COMMANDS = [
     "cp", "mv", "rm", "mkdir", "rmdir", "touch", "chmod", "chown",
-    "ln", "echo", "printf"
+    "ln", "echo", "printf", "export", "tar", "gzip", "zip", "unzip"
 ]
 
 SYSTEM_COMMANDS = [
     "ps", "top", "htop", "who", "netstat", "ifconfig", "ping",
-    "ssh", "scp", "tar", "gzip", "zip", "unzip", "curl", "wget"
+    "ssh", "scp", "curl", "wget"
 ]
 
 BLOCKED_COMMANDS = [
@@ -44,7 +45,6 @@ DANGEROUS_PATTERNS = [
     r"2>&1",  # Redirect stderr to stdout
     r"\$\(",  # Command substitution
     r"\$\{\w+\}",  # Variable substitution
-    r"[;&|]",  # Command chaining
     r"`",  # Backtick command substitution
 ]
 
@@ -84,7 +84,8 @@ def validate_command(
     write_commands: List[str] = WRITE_COMMANDS,
     system_commands: List[str] = SYSTEM_COMMANDS,
     blocked_commands: List[str] = BLOCKED_COMMANDS,
-    dangerous_patterns: List[str] = DANGEROUS_PATTERNS
+    dangerous_patterns: List[str] = DANGEROUS_PATTERNS,
+    allow_command_separators: bool = True
 ) -> Dict[str, Union[bool, str, Optional[str]]]:
     """Validate a command for security.
     
@@ -95,6 +96,7 @@ def validate_command(
         system_commands: List of system commands
         blocked_commands: List of blocked commands
         dangerous_patterns: List of dangerous patterns to block
+        allow_command_separators: Whether to allow command separators (|, ;, &)
         
     Returns:
         A dictionary with validation results
@@ -109,18 +111,23 @@ def validate_command(
     if not command.strip():
         result["error"] = "Empty command"
         return result
+
+    # If command separators are not allowed, check for them
+    if not allow_command_separators:
+        # Check for pipe, semicolon, or ampersand
+        if re.search(r"[|;&]", command):
+            result["error"] = "Command separators (|, ;, &) are not allowed in the current configuration"
+            return result
     
-    # Check for dangerous patterns except pipes (if removed from config)
+    # Check for dangerous patterns
     for pattern in dangerous_patterns:
         if re.search(pattern, command):
             # More descriptive error message
-            if pattern == "[;&]":
-                result["error"] = "Command contains forbidden operators (semicolon or ampersand). These are blocked for security reasons."
-            elif pattern == r"\$\(":
+            if pattern == r"\$\(":
                 result["error"] = "Command contains command substitution $(). This is blocked for security reasons."
             elif pattern == r"\$\{\w+\}":
                 result["error"] = "Command contains variable substitution ${var}. This is blocked for security reasons."
-            elif pattern == "`":
+            elif pattern == r"`":
                 result["error"] = "Command contains backtick command substitution. This is blocked for security reasons."
             else:
                 result["error"] = f"Command contains dangerous pattern: {pattern}"

@@ -6,6 +6,7 @@ import argparse
 import asyncio
 import logging
 import uuid
+import json
 from typing import Any, Dict, List, Optional
 
 from mcp.server.fastmcp import FastMCP
@@ -26,13 +27,14 @@ logger = logging.getLogger(__name__)
 class CommandLineMCP:
     """Command-line MCP server for Unix/macOS terminal commands."""
     
-    def __init__(self, config_path: Optional[str] = None):
+    def __init__(self, config_path: Optional[str] = None, env_file_path: Optional[str] = None):
         """Initialize the MCP server.
         
         Args:
             config_path: Optional path to a configuration file
+            env_file_path: Optional path to a .env file
         """
-        self.config = Config(config_path)
+        self.config = Config(config_path, env_file_path)
         self.session_manager = SessionManager()
         
         # Set up logging
@@ -40,11 +42,15 @@ class CommandLineMCP:
         logger.setLevel(getattr(logging, log_level))
         
         # Load command lists from config
-        self.read_commands = self.config.get("commands", "read_commands")
-        self.write_commands = self.config.get("commands", "write_commands")
-        self.system_commands = self.config.get("commands", "system_commands")
-        self.blocked_commands = self.config.get("commands", "blocked_commands")
-        self.dangerous_patterns = self.config.get("commands", "dangerous_patterns")
+        command_lists = self.config.get_effective_command_lists()
+        self.read_commands = command_lists["read"]
+        self.write_commands = command_lists["write"]
+        self.system_commands = command_lists["system"]
+        self.blocked_commands = command_lists["blocked"]
+        self.dangerous_patterns = command_lists["dangerous_patterns"]
+        
+        # Get separator support status
+        self.separator_support = self.config.has_separator_support()
         
         # Initialize MCP app
         server_config = self.config.get_section("server")
@@ -63,9 +69,9 @@ class CommandLineMCP:
             },
             "blocked_commands": self.blocked_commands,
             "command_chaining": {
-                "pipe": "Supported - All commands in pipeline must be supported",
-                "semicolon": "Supported - All commands in sequence must be supported", 
-                "ampersand": "Supported - All commands must be supported"
+                "pipe": "Supported" if self.separator_support["pipe"] else "Not supported",
+                "semicolon": "Supported" if self.separator_support["semicolon"] else "Not supported", 
+                "ampersand": "Supported" if self.separator_support["ampersand"] else "Not supported"
             },
             "command_restrictions": "Special characters like $(), ${}, backticks, and I/O redirection are blocked"
         }
@@ -111,13 +117,19 @@ class CommandLineMCP:
             Returns:
                 A dictionary with command output and status
             """
+            # Get the latest command lists
+            command_lists = self.config.get_effective_command_lists()
+            separator_support = self.config.has_separator_support()
+            allow_separators = self.config.get("security", "allow_command_separators", True)
+            
             validation = validate_command(
                 command, 
-                self.read_commands, 
-                self.write_commands, 
-                self.system_commands, 
-                self.blocked_commands, 
-                self.dangerous_patterns
+                command_lists["read"],
+                command_lists["write"],
+                command_lists["system"],
+                command_lists["blocked"],
+                command_lists["dangerous_patterns"],
+                allow_command_separators=allow_separators
             )
             
             if not validation["is_valid"]:
@@ -144,11 +156,14 @@ class CommandLineMCP:
             Returns:
                 A dictionary with commands grouped by category
             """
+            # Get the latest command lists
+            command_lists = self.config.get_effective_command_lists()
+            
             return {
-                "read_commands": self.read_commands,
-                "write_commands": self.write_commands,
-                "system_commands": self.system_commands,
-                "blocked_commands": self.blocked_commands
+                "read_commands": command_lists["read"],
+                "write_commands": command_lists["write"],
+                "system_commands": command_lists["system"],
+                "blocked_commands": command_lists["blocked"]
             }
             
         # Store reference to silence linter warnings
@@ -169,9 +184,29 @@ class CommandLineMCP:
             Returns:
                 A dictionary with detailed information about command capabilities and usage
             """
+            # Get the latest command lists and separator support
+            command_lists = self.config.get_effective_command_lists()
+            separator_support = self.config.has_separator_support()
+            
+            # Update capabilities
+            updated_capabilities = {
+                "supported_commands": {
+                    "read": command_lists["read"],
+                    "write": command_lists["write"],
+                    "system": command_lists["system"]
+                },
+                "blocked_commands": command_lists["blocked"],
+                "command_chaining": {
+                    "pipe": "Supported" if separator_support["pipe"] else "Not supported",
+                    "semicolon": "Supported" if separator_support["semicolon"] else "Not supported",
+                    "ampersand": "Supported" if separator_support["ampersand"] else "Not supported"
+                },
+                "command_restrictions": "Special characters like $(), ${}, backticks, and I/O redirection are blocked"
+            }
+            
             # Provide helpful information for Claude to understand command usage
             return {
-                "capabilities": self.command_capabilities,
+                "capabilities": updated_capabilities,
                 "examples": self.usage_examples,
                 "recommended_approach": {
                     "finding_large_files": "Use 'du -h <directory>/* | sort -hr | head -n 10' to find the 10 largest files",
@@ -228,6 +263,88 @@ class CommandLineMCP:
                 
         # Store reference to silence linter warnings
         self._approve_command_type_func = approve_command_type
+        
+        # Register new tools for configuration
+        get_configuration_tool = self.app.tool()
+        @get_configuration_tool  # Keep decorator reference to satisfy linters
+        async def get_configuration() -> Dict[str, Any]:
+            """
+            Get the current configuration settings.
+            
+            Returns:
+                The current configuration settings
+            """
+            # Get a safe copy of the configuration
+            config_copy = self.config.get_all()
+            
+            # Format it for display
+            return {
+                "server": config_copy["server"],
+                "security": config_copy["security"],
+                "commands": {
+                    "read_count": len(config_copy["commands"]["read"]),
+                    "write_count": len(config_copy["commands"]["write"]),
+                    "system_count": len(config_copy["commands"]["system"]),
+                    "blocked_count": len(config_copy["commands"]["blocked"]),
+                    "dangerous_patterns_count": len(config_copy["commands"]["dangerous_patterns"]),
+                    "full_command_lists": config_copy["commands"]
+                },
+                "output": config_copy["output"],
+                "separator_support": self.config.has_separator_support()
+            }
+            
+        # Store reference to silence linter warnings
+        self._get_configuration_func = get_configuration
+        
+        update_configuration_tool = self.app.tool()
+        @update_configuration_tool  # Keep decorator reference to satisfy linters
+        async def update_configuration(config_updates: str, save: bool = False) -> Dict[str, Any]:
+            """
+            Update configuration settings.
+            
+            Args:
+                config_updates: JSON string with configuration updates
+                save: Whether to save the configuration to file
+                
+            Returns:
+                A dictionary with update status
+            """
+            try:
+                # Parse JSON updates
+                updates = json.loads(config_updates)
+                
+                # Update configuration
+                self.config.update(updates, save)
+                
+                # Reload command lists
+                command_lists = self.config.get_effective_command_lists()
+                self.read_commands = command_lists["read"]
+                self.write_commands = command_lists["write"]
+                self.system_commands = command_lists["system"]
+                self.blocked_commands = command_lists["blocked"]
+                self.dangerous_patterns = command_lists["dangerous_patterns"]
+                
+                # Update separator support
+                self.separator_support = self.config.has_separator_support()
+                
+                return {
+                    "success": True,
+                    "message": "Configuration updated successfully",
+                    "saved": save
+                }
+            except json.JSONDecodeError as e:
+                return {
+                    "success": False,
+                    "message": f"Invalid JSON: {str(e)}"
+                }
+            except Exception as e:
+                return {
+                    "success": False,
+                    "message": f"Error updating configuration: {str(e)}"
+                }
+                
+        # Store reference to silence linter warnings
+        self._update_configuration_func = update_configuration
     
     async def _execute_command(
         self, 
@@ -245,14 +362,19 @@ class CommandLineMCP:
         Returns:
             A dictionary with command output and status
         """
+        # Get the latest command lists and separator settings
+        command_lists = self.config.get_effective_command_lists()
+        allow_separators = self.config.get("security", "allow_command_separators", True)
+        
         # Validate the command
         validation = validate_command(
             command, 
-            self.read_commands, 
-            self.write_commands, 
-            self.system_commands, 
-            self.blocked_commands, 
-            self.dangerous_patterns
+            command_lists["read"],
+            command_lists["write"],
+            command_lists["system"],
+            command_lists["blocked"],
+            command_lists["dangerous_patterns"],
+            allow_command_separators=allow_separators
         )
         
         if not validation["is_valid"]:
@@ -316,7 +438,7 @@ class CommandLineMCP:
             error = stderr.decode("utf-8", errors="replace")
             
             # Limit output size to prevent huge responses
-            max_output_size = self.config.get("security", "max_output_size", 100 * 1024)  # 100KB default
+            max_output_size = self.config.get("output", "max_size", 100 * 1024)  # 100KB default
             if len(output) > max_output_size:
                 output = output[:max_output_size] + "\n... [output truncated due to size]"
             
@@ -356,9 +478,10 @@ def main():
     """Run the command-line MCP server."""
     parser = argparse.ArgumentParser(description="Command-line MCP server")
     parser.add_argument("--config", "-c", help="Path to configuration file")
+    parser.add_argument("--env", "-e", help="Path to .env file")
     args = parser.parse_args()
     
-    server = CommandLineMCP(config_path=args.config)
+    server = CommandLineMCP(config_path=args.config, env_file_path=args.env)
     server.run()
 
 if __name__ == "__main__":
