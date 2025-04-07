@@ -318,6 +318,67 @@ def test_effective_command_lists():
     assert isinstance(command_lists["dangerous_patterns"], list)
 
 
+def test_env_var_command_merging():
+    """Test that environment variables merge with existing command lists."""
+    # Create a temporary config file with existing commands
+    with tempfile.NamedTemporaryFile(
+        mode="w+", suffix=".json", delete=False
+    ) as temp_file:
+        test_config = {
+            "commands": {
+                "read": ["ls", "cat", "grep"],
+                "system": ["ps", "top"]
+            }
+        }
+        json.dump(test_config, temp_file)
+        temp_file_path = temp_file.name
+
+    # Clean existing environment variables
+    env_vars = [var for var in os.environ if var.startswith("CMD_LINE_MCP_")]
+    existing_vars = {}
+    for var in env_vars:
+        existing_vars[var] = os.environ[var]
+        del os.environ[var]
+
+    # Set environment variables to add commands
+    os.environ["CMD_LINE_MCP_COMMANDS_READ"] = "awk,sed,jq"
+    os.environ["CMD_LINE_MCP_COMMANDS_SYSTEM"] = "docker,kubectl"
+
+    try:
+        # Create config with both the file and env vars
+        config = Config(config_path=temp_file_path)
+        
+        # Get the command lists
+        command_lists = config.get_effective_command_lists()
+        
+        # Check that both original and new commands are present
+        # Original commands from config file
+        assert "ls" in command_lists["read"]
+        assert "cat" in command_lists["read"]
+        assert "grep" in command_lists["read"]
+        assert "ps" in command_lists["system"]
+        assert "top" in command_lists["system"]
+        
+        # New commands from environment variables
+        assert "awk" in command_lists["read"]
+        assert "sed" in command_lists["read"]
+        assert "jq" in command_lists["read"]
+        assert "docker" in command_lists["system"]
+        assert "kubectl" in command_lists["system"]
+    finally:
+        # Clean up
+        os.unlink(temp_file_path)
+        
+        # Restore original env vars
+        for var in ["CMD_LINE_MCP_COMMANDS_READ", "CMD_LINE_MCP_COMMANDS_SYSTEM"]:
+            if var in os.environ:
+                del os.environ[var]
+                
+        # Restore existing environment variables
+        for var, value in existing_vars.items():
+            os.environ[var] = value
+
+
 def test_separator_support():
     """Test command separator support configuration."""
     # Create a fresh default config with explicit empty options

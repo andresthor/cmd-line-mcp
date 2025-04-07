@@ -279,7 +279,11 @@ class Config:
                     commands = [
                         cmd.strip() for cmd in value.split(",") if cmd.strip()
                     ]
-                    self.config["commands"][category] = commands
+                    # Merge with existing commands rather than replacing them
+                    # Make sure no duplicates by converting to set and back to list
+                    existing_commands = self.config["commands"][category]
+                    merged_commands = list(set(existing_commands + commands))
+                    self.config["commands"][category] = merged_commands
             elif config_key == "dangerous_patterns":
                 # Split comma-separated patterns
                 patterns = [
@@ -287,7 +291,10 @@ class Config:
                     for pattern in value.split(",")
                     if pattern.strip()
                 ]
-                self.config["commands"]["dangerous_patterns"] = patterns
+                # Merge with existing patterns rather than replacing them
+                existing_patterns = self.config["commands"]["dangerous_patterns"]
+                merged_patterns = list(set(existing_patterns + patterns))
+                self.config["commands"]["dangerous_patterns"] = merged_patterns
             elif config_key.startswith("security_"):
                 # Handle security settings
                 setting = config_key[9:]  # Remove "security_" prefix
