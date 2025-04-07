@@ -1,7 +1,7 @@
 """Tests for the security module."""
 
 import pytest
-from cmd_line_mcp.security import validate_command
+from cmd_line_mcp.security import validate_command, parse_command
 
 def test_validate_command_success_cases():
     """Test successful validation of commands."""
@@ -292,3 +292,139 @@ def test_validate_command_with_special_characters():
     assert result["is_valid"] is False
     assert result["command_type"] is None
     assert result["error"] is not None
+
+def test_parse_command():
+    """Test parsing command strings."""
+    # Test normal command
+    cmd, args = parse_command("ls -la")
+    assert cmd == "ls"
+    assert args == ["-la"]
+    
+    # Test command with multiple arguments
+    cmd, args = parse_command("grep -r pattern ./dir")
+    assert cmd == "grep"
+    assert args == ["-r", "pattern", "./dir"]
+    
+    # Test command with quoted arguments
+    cmd, args = parse_command("grep \"complex pattern\" file.txt")
+    assert cmd == "grep"
+    assert args == ["complex pattern", "file.txt"]
+    
+    # Test empty command
+    cmd, args = parse_command("")
+    assert cmd == ""
+    assert args == []
+    
+    # Test command starting with dash (for pipe continuation)
+    cmd, args = parse_command("-v pattern")
+    assert cmd == ""
+    assert args == ["-v pattern"]
+
+def test_validate_command_with_separator_control():
+    """Test command validation with separator control."""
+    # Setup test data
+    read_commands = ["ls", "cat", "grep"]
+    write_commands = ["mkdir", "touch"]
+    system_commands = ["ps"]
+    blocked_commands = ["sudo"]
+    dangerous_patterns = []
+    
+    # Test with separators allowed (default)
+    result = validate_command(
+        "ls -la | grep pattern", 
+        read_commands, 
+        write_commands, 
+        system_commands, 
+        blocked_commands, 
+        dangerous_patterns,
+        allow_command_separators=True
+    )
+    assert result["is_valid"] is True
+    assert result["command_type"] == "read"
+    
+    # Test with separators disallowed
+    result = validate_command(
+        "ls -la | grep pattern", 
+        read_commands, 
+        write_commands, 
+        system_commands, 
+        blocked_commands, 
+        dangerous_patterns,
+        allow_command_separators=False
+    )
+    assert result["is_valid"] is False
+    assert result["command_type"] is None
+    assert "separators" in result["error"].lower()
+    
+    # Test semicolon with separators disallowed
+    result = validate_command(
+        "mkdir test; ls -la", 
+        read_commands, 
+        write_commands, 
+        system_commands, 
+        blocked_commands, 
+        dangerous_patterns,
+        allow_command_separators=False
+    )
+    assert result["is_valid"] is False
+    assert result["command_type"] is None
+    assert "separators" in result["error"].lower()
+    
+    # Test ampersand with separators disallowed
+    result = validate_command(
+        "ps aux &", 
+        read_commands, 
+        write_commands, 
+        system_commands, 
+        blocked_commands, 
+        dangerous_patterns,
+        allow_command_separators=False
+    )
+    assert result["is_valid"] is False
+    assert result["command_type"] is None
+    assert "separators" in result["error"].lower()
+
+def test_command_type_elevation():
+    """Test that command type is properly elevated to the most privileged type."""
+    # Setup test data
+    read_commands = ["ls", "cat", "grep"]
+    write_commands = ["mkdir", "touch"]
+    system_commands = ["ps"]
+    blocked_commands = ["sudo"]
+    dangerous_patterns = []
+    
+    # Test with all read commands
+    result = validate_command(
+        "ls -la | grep pattern | cat file.txt", 
+        read_commands, 
+        write_commands, 
+        system_commands, 
+        blocked_commands, 
+        dangerous_patterns
+    )
+    assert result["is_valid"] is True
+    assert result["command_type"] == "read"
+    
+    # Test with mixed read and write commands
+    result = validate_command(
+        "ls -la; mkdir test", 
+        read_commands, 
+        write_commands, 
+        system_commands, 
+        blocked_commands, 
+        dangerous_patterns
+    )
+    assert result["is_valid"] is True
+    assert result["command_type"] == "write"
+    
+    # Test with mixed read, write, and system commands
+    result = validate_command(
+        "ls -la; mkdir test; ps aux", 
+        read_commands, 
+        write_commands, 
+        system_commands, 
+        blocked_commands, 
+        dangerous_patterns
+    )
+    assert result["is_valid"] is True
+    assert result["command_type"] == "system"
