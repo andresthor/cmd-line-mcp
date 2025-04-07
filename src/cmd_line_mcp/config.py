@@ -268,7 +268,7 @@ class Config:
                 continue
 
             # Remove prefix and get the nested keys
-            config_key = key[14:].lower()  # Remove "CMD_LINE_MCP_" prefix
+            config_key = key[13:].lower()  # Remove "CMD_LINE_MCP_" prefix
 
             # Handle special cases for commands and arrays
             if config_key.startswith("commands_"):
