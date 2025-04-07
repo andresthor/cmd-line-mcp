@@ -13,7 +13,7 @@ Thank you for your interest in contributing to cmd-line-mcp! This document provi
 3. Set up the development environment:
    ```bash
    python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   source venv/bin/activate
    pip install -e ".[dev]"  # Install with development dependencies
    ```
 

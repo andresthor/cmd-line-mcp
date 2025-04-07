@@ -31,7 +31,6 @@ echo ""
 echo "To use with Claude for Desktop, add the following to your Claude desktop config file:"
 echo "  (~/.config/Claude/claude_desktop_config.json on Linux)"
 echo "  (~/Library/Application Support/Claude/claude_desktop_config.json on macOS)"
-echo "  (%APPDATA%\\Claude\\claude_desktop_config.json on Windows)"
 echo ""
 echo "{" 
 echo '  "mcpServers": {'

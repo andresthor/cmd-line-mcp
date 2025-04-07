@@ -4,7 +4,7 @@ A Model Control Protocol (MCP) server that safely runs command-line arguments fo
 
 ## Overview
 
-This MCP server allows AI assistants to execute common Unix/macOS terminal commands through a controlled and secure interface. It supports the top 40 most used terminal commands with appropriate security measures.
+This MCP server allows AI assistants to execute common Unix/macOS terminal commands through a controlled and secure interface. It supports the top ~40 most used terminal commands with appropriate security measures.
 
 ## Features
 
@@ -49,12 +49,14 @@ This MCP server allows AI assistants to execute common Unix/macOS terminal comma
 git clone https://github.com/yourusername/cmd-line-mcp.git
 cd cmd-line-mcp
 
-# Create a virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+# Run the install script (Linux/macOS)
+./install.sh
 
-# Install the package
+# Or install manually:
+python -m venv venv
+source venv/bin/activate
 pip install -e .
+cp config.json.example config.json  # Create initial config
 ```
 
 ## Usage
