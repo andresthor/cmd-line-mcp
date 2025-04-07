@@ -9,24 +9,25 @@
     "session_timeout": 3600,
     "max_output_size": 102400,
     "allow_user_confirmation": true,
-    "require_session_id": false
+    "require_session_id": false,
+    "allow_command_separators": true
   },
   "commands": {
-    "read_commands": [
+    "read": [
       "ls", "pwd", "cat", "less", "head", "tail", "grep",
       "find", "which", "du", "df", "file", "uname", "hostname", 
       "uptime", "date", "whoami", "id", "env", "history", "man",
       "info", "help", "sort"
     ],
-    "write_commands": [
+    "write": [
       "cp", "mv", "rm", "mkdir", "rmdir", "touch", "chmod", "chown",
-      "ln", "echo", "printf"
+      "ln", "echo", "printf", "export", "tar", "gzip", "zip", "unzip"
     ],
-    "system_commands": [
+    "system": [
       "ps", "top", "htop", "who", "netstat", "ifconfig", "ping",
-      "ssh", "scp", "tar", "gzip", "zip", "unzip", "curl", "wget"
+      "ssh", "scp", "curl", "wget"
     ],
-    "blocked_commands": [
+    "blocked": [
       "sudo", "su", "bash", "sh", "zsh", "ksh", "csh", "fish",
       "screen", "tmux", "nc", "telnet", "nmap",
       "dd", "mkfs", "mount", "umount", "shutdown", "reboot",
@@ -49,5 +50,9 @@
       "\\$\\{\\w+\\}",
       "`"
     ]
+  },
+  "output": {
+    "max_size": 102400,
+    "format": "text"
   }
 }
