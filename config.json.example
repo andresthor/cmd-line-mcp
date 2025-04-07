@@ -1,0 +1,53 @@
+{
+  "server": {
+    "name": "cmd-line-mcp",
+    "version": "0.1.0",
+    "description": "MCP server for safely executing command-line tools",
+    "log_level": "INFO"
+  },
+  "security": {
+    "session_timeout": 3600,
+    "max_output_size": 102400,
+    "allow_user_confirmation": true
+  },
+  "commands": {
+    "read_commands": [
+      "ls", "pwd", "cat", "less", "head", "tail", "grep",
+      "find", "which", "du", "df", "file", "uname", "hostname", 
+      "uptime", "date", "whoami", "id", "env", "history", "man",
+      "info", "help"
+    ],
+    "write_commands": [
+      "cp", "mv", "rm", "mkdir", "rmdir", "touch", "chmod", "chown",
+      "ln", "echo", "printf"
+    ],
+    "system_commands": [
+      "ps", "top", "htop", "who", "netstat", "ifconfig", "ping",
+      "ssh", "scp", "tar", "gzip", "zip", "unzip", "curl", "wget"
+    ],
+    "blocked_commands": [
+      "sudo", "su", "bash", "sh", "zsh", "ksh", "csh", "fish",
+      "screen", "tmux", "nc", "telnet", "nmap",
+      "dd", "mkfs", "mount", "umount", "shutdown", "reboot",
+      "passwd", "chpasswd", "useradd", "userdel", "groupadd", "groupdel",
+      "eval", "exec", "source", "."
+    ],
+    "dangerous_patterns": [
+      "rm\\s+-rf\\s+/",
+      ">\\s+/dev/(sd|hd|nvme|xvd)",
+      ">\\s+/dev/null",
+      ">\\s+/etc/",
+      ">\\s+/boot/",
+      ">\\s+/bin/",
+      ">\\s+/sbin/",
+      ">\\s+/usr/bin/",
+      ">\\s+/usr/sbin/",
+      ">\\s+/usr/local/bin/",
+      "2>&1",
+      "\\$\\(",
+      "\\$\\{\\w+\\}",
+      "[;&|]",
+      "`"
+    ]
+  }
+}

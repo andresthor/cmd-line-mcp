@@ -1,0 +1,207 @@
+"""Security utilities for the command-line MCP server."""
+
+import re
+import shlex
+from typing import Dict, List, Optional, Tuple, Union
+
+# Default command lists - these will be overridden by config
+READ_COMMANDS = [
+    "ls", "pwd", "cat", "less", "head", "tail", "grep",
+    "find", "which", "du", "df", "file", "uname", "hostname", 
+    "uptime", "date", "whoami", "id", "env", "history", "man",
+    "info", "help"
+]
+
+WRITE_COMMANDS = [
+    "cp", "mv", "rm", "mkdir", "rmdir", "touch", "chmod", "chown",
+    "ln", "echo", "printf"
+]
+
+SYSTEM_COMMANDS = [
+    "ps", "top", "htop", "who", "netstat", "ifconfig", "ping",
+    "ssh", "scp", "tar", "gzip", "zip", "unzip", "curl", "wget"
+]
+
+BLOCKED_COMMANDS = [
+    "sudo", "su", "bash", "sh", "zsh", "ksh", "csh", "fish",
+    "screen", "tmux", "nc", "telnet", "nmap",
+    "dd", "mkfs", "mount", "umount", "shutdown", "reboot",
+    "passwd", "chpasswd", "useradd", "userdel", "groupadd", "groupdel",
+    "eval", "exec", "source", "."
+]
+
+DANGEROUS_PATTERNS = [
+    r"rm\s+-rf\s+/",  # Delete root directory
+    r">\s+/dev/(sd|hd|nvme|xvd)",  # Write to block devices
+    r">\s+/dev/null",  # Output redirection
+    r">\s+/etc/",  # Write to system config
+    r">\s+/boot/",  # Write to boot
+    r">\s+/bin/",  # Write to binaries
+    r">\s+/sbin/",  # Write to system binaries
+    r">\s+/usr/bin/",  # Write to user binaries
+    r">\s+/usr/sbin/",  # Write to system binaries
+    r">\s+/usr/local/bin/",  # Write to local binaries
+    r"2>&1",  # Redirect stderr to stdout
+    r"\$\(",  # Command substitution
+    r"\$\{\w+\}",  # Variable substitution
+    r"[;&|]",  # Command chaining
+    r"`",  # Backtick command substitution
+]
+
+def parse_command(command: str) -> Tuple[str, List[str]]:
+    """Parse a command string into command and arguments.
+    
+    Args:
+        command: The command string
+        
+    Returns:
+        A tuple of (command, arguments)
+    """
+    try:
+        parts = shlex.split(command)
+        if not parts:
+            return "", []
+        return parts[0], parts[1:]
+    except ValueError:
+        # If shlex.split fails (e.g., on unbalanced quotes), 
+        # fall back to a simpler split
+        parts = command.strip().split()
+        if not parts:
+            return "", []
+        return parts[0], parts[1:]
+
+def validate_command(
+    command: str, 
+    read_commands: List[str] = READ_COMMANDS,
+    write_commands: List[str] = WRITE_COMMANDS,
+    system_commands: List[str] = SYSTEM_COMMANDS,
+    blocked_commands: List[str] = BLOCKED_COMMANDS,
+    dangerous_patterns: List[str] = DANGEROUS_PATTERNS
+) -> Dict[str, Union[bool, str, Optional[str]]]:
+    """Validate a command for security.
+    
+    Args:
+        command: The command to validate
+        read_commands: List of read-only commands
+        write_commands: List of write commands
+        system_commands: List of system commands
+        blocked_commands: List of blocked commands
+        dangerous_patterns: List of dangerous patterns to block
+        
+    Returns:
+        A dictionary with validation results
+    """
+    result = {
+        "is_valid": False,
+        "command_type": None,
+        "error": None
+    }
+    
+    # Empty command
+    if not command.strip():
+        result["error"] = "Empty command"
+        return result
+    
+    # Check for dangerous patterns except pipes (if removed from config)
+    for pattern in dangerous_patterns:
+        if re.search(pattern, command):
+            # More descriptive error message
+            if pattern == "[;&]":
+                result["error"] = "Command contains forbidden operators (semicolon or ampersand). These are blocked for security reasons."
+            elif pattern == "\$\(":
+                result["error"] = "Command contains command substitution $(). This is blocked for security reasons."
+            elif pattern == "\$\{\w+\}":
+                result["error"] = "Command contains variable substitution ${var}. This is blocked for security reasons."
+            elif pattern == "`":
+                result["error"] = "Command contains backtick command substitution. This is blocked for security reasons."
+            else:
+                result["error"] = f"Command contains dangerous pattern: {pattern}"
+            return result
+    
+    # If command chaining is allowed, validate each part
+    for separator in ["|", ";", "&"]:
+        if separator in command:
+            # Determine which separator is being used
+            if separator == "|":
+                parts = command.split("|")
+                separator_name = "pipeline"
+            elif separator == ";":
+                parts = command.split(";")
+                separator_name = "command sequence"
+            elif separator == "&":
+                parts = command.split("&")
+                separator_name = "background command"
+                
+            # Track command types across all parts
+            all_parts_types = []
+            
+            for part in parts:
+                part = part.strip()
+                if not part:
+                    result["error"] = f"Empty command in {separator_name}"
+                    return result
+                    
+                # Parse each command
+                try:
+                    cmd_part, _ = parse_command(part)
+                except ValueError as e:
+                    result["error"] = f"Invalid command syntax in {separator_name}: {str(e)}"
+                    return result
+                    
+                # Check if any command is blocked
+                if cmd_part in blocked_commands:
+                    result["error"] = f"Command '{cmd_part}' in {separator_name} is blocked for security reasons"
+                    return result
+                    
+                # Check if the command is recognized
+                if cmd_part not in read_commands and cmd_part not in write_commands and cmd_part not in system_commands:
+                    result["error"] = f"Command '{cmd_part}' in {separator_name} is not recognized or supported. Supported commands: {', '.join(read_commands + write_commands + system_commands)}"
+                    return result
+                    
+                # Track command types
+                if cmd_part in read_commands:
+                    all_parts_types.append("read")
+                elif cmd_part in write_commands:
+                    all_parts_types.append("write")
+                elif cmd_part in system_commands:
+                    all_parts_types.append("system")
+            
+            # Determine the most privileged command type
+            if "system" in all_parts_types:
+                result["command_type"] = "system"
+            elif "write" in all_parts_types:
+                result["command_type"] = "write"
+            else:
+                result["command_type"] = "read"
+                
+            result["is_valid"] = True
+            return result
+    
+    # For non-pipeline commands, validate normally
+    try:
+        main_cmd, _ = parse_command(command)
+    except ValueError as e:
+        result["error"] = f"Invalid command syntax: {str(e)}"
+        return result
+    
+    # Check if command is blocked
+    if main_cmd in blocked_commands:
+        result["error"] = f"Command '{main_cmd}' is blocked for security reasons"
+        return result
+    
+    # Determine command type with better error message
+    if main_cmd in read_commands:
+        result["command_type"] = "read"
+        result["is_valid"] = True
+    elif main_cmd in write_commands:
+        result["command_type"] = "write"
+        result["is_valid"] = True
+    elif main_cmd in system_commands:
+        result["command_type"] = "system"
+        result["is_valid"] = True
+    else:
+        # List available commands
+        supported_cmds = read_commands + write_commands + system_commands
+        result["error"] = f"Command '{main_cmd}' is not recognized or supported. Supported commands: {', '.join(supported_cmds)}"
+        
+    return result
