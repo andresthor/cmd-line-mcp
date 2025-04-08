@@ -23,15 +23,16 @@
       "ls", "pwd", "cat", "less", "head", "tail", "grep",
       "find", "which", "du", "df", "file", "uname", "hostname", 
       "uptime", "date", "whoami", "id", "env", "history", "man",
-      "info", "help", "sort"
+      "info", "help", "sort", "wc"
     ],
     "write": [
       "cp", "mv", "rm", "mkdir", "rmdir", "touch", "chmod", "chown",
-      "ln", "echo", "printf", "export", "tar", "gzip", "zip", "unzip"
+      "ln", "echo", "printf", "export", "tar", "gzip", "zip", "unzip",
+      "awk", "sed"
     ],
     "system": [
       "ps", "top", "htop", "who", "netstat", "ifconfig", "ping",
-      "ssh", "scp", "curl", "wget"
+      "ssh", "scp", "curl", "wget", "xargs"
     ],
     "blocked": [
       "sudo", "su", "bash", "sh", "zsh", "ksh", "csh", "fish",

@@ -59,6 +59,7 @@ DEFAULT_CONFIG = {
             "info",
             "help",
             "sort",
+            "wc",
         ],
         "write": [
             "cp",
@@ -77,6 +78,8 @@ DEFAULT_CONFIG = {
             "gzip",
             "zip",
             "unzip",
+            "awk",
+            "sed",
         ],
         "system": [
             "ps",
@@ -90,6 +93,7 @@ DEFAULT_CONFIG = {
             "scp",
             "curl",
             "wget",
+            "xargs",
         ],
         "blocked": [
             "sudo",

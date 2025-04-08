@@ -38,6 +38,7 @@ READ_COMMANDS = [
     "info",
     "help",
     "sort",
+    "wc",
 ]
 
 WRITE_COMMANDS = [
@@ -57,6 +58,8 @@ WRITE_COMMANDS = [
     "gzip",
     "zip",
     "unzip",
+    "awk",
+    "sed",
 ]
 
 SYSTEM_COMMANDS = [
@@ -71,6 +74,7 @@ SYSTEM_COMMANDS = [
     "scp",
     "curl",
     "wget",
+    "xargs",
 ]
 
 BLOCKED_COMMANDS = [
@@ -471,8 +475,8 @@ def extract_directory_from_command(command: str) -> Optional[str]:
             # If no directory argument found, assume current directory
             return os.getcwd()
 
-        # For cat, less, head, tail, grep, etc. operating on files
-        elif main_cmd in ["cat", "less", "head", "tail", "grep", "wc"]:
+        # For cat, less, head, tail, grep, wc, etc. operating on files
+        elif main_cmd in ["cat", "less", "head", "tail", "grep", "wc", "awk", "sed"]:
             # Get the last non-flag argument which is usually the file
             file_arg = None
             for arg in args:
