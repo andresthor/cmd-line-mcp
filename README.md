@@ -20,7 +20,7 @@ AI assistants interact with this server using standardized MCP tools, enabling s
 | Pattern matching | Command chaining (pipes, etc.) | Auto-approval options |
 | Dangerous command blocking | Intuitive approval workflow | Multiple config methods |
 
-## Supported Commands
+## Supported Commands (out of the box)
 
 ### Read Commands
 - `ls`, `pwd`, `cat`, `less`, `head`, `tail`, `grep`, `find`, `which`, `du`, `df`, `file`, `sort`, etc.
@@ -36,17 +36,17 @@ AI assistants interact with this server using standardized MCP tools, enabling s
 The system implements a multi-layered security approach:
 
 ```
-┌────────────────────────────────────────────────────────────┐
-│                   COMMAND-LINE MCP SERVER                   │
-├────────────────┬───────────────────────┬──────────────────┤
-│ COMMAND SECURITY  │   DIRECTORY SECURITY   │ SESSION SECURITY │
-├────────────────┼───────────────────────┼──────────────────┤
-│ ✓ Read commands  │ ✓ Directory whitelist  │ ✓ Session IDs    │
-│ ✓ Write commands │ ✓ Runtime approvals    │ ✓ Persistent     │
-│ ✓ System commands│ ✓ Path validation      │   permissions    │
-│ ✓ Blocked list   │ ✓ Home dir expansion   │ ✓ Auto timeouts  │
-│ ✓ Pattern filters│ ✓ Subdirectory check   │ ✓ Desktop mode   │
-└────────────────┴───────────────────────┴──────────────────┘
+┌───────────────────────────────────────────────────────────────┐
+│                   COMMAND-LINE MCP SERVER                     │
+├──────────────────┬────────────────────────┬───────────────────┤
+│ COMMAND SECURITY │   DIRECTORY SECURITY   │ SESSION SECURITY  │
+├──────────────────┼────────────────────────┼───────────────────┤
+│ ✓ Read commands  │ ✓ Directory whitelist  │ ✓ Session IDs     │
+│ ✓ Write commands │ ✓ Runtime approvals    │ ✓ Persistent      │
+│ ✓ System commands│ ✓ Path validation      │   permissions     │
+│ ✓ Blocked list   │ ✓ Home dir expansion   │ ✓ Auto timeouts   │
+│ ✓ Pattern filters│ ✓ Subdirectory check   │ ✓ Desktop mode    │
+└──────────────────┴────────────────────────┴───────────────────┘
 ```
 
 All security features can be configured from restrictive to permissive based on your threat model and convenience requirements.
