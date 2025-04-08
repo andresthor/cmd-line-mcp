@@ -1,10 +1,10 @@
 # Command-Line MCP Server
 
-A Model Control Protocol (MCP) server that safely runs command-line arguments for Unix/macOS systems.
+A highly configurable Model Control Protocol (MCP) server that safely runs command-line arguments for Unix/macOS systems.
 
 ## Overview
 
-This MCP server allows AI assistants to execute common Unix/macOS terminal commands through a controlled and secure interface. It supports the top ~40 most used terminal commands with appropriate security measures.
+This MCP server allows AI assistants to execute common Unix/macOS terminal commands through a controlled and secure interface. It supports the top ~40 most used terminal commands with appropriate security measures and offers extensive customization options. The command lists, security rules, and server behavior can all be tailored to your specific needs using configuration files, environment variables, or runtime updates.
 
 ## Features
 
