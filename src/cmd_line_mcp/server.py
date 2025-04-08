@@ -6,7 +6,6 @@ import argparse
 import asyncio
 import logging
 import uuid
-import json
 from typing import Any, Dict, List, Optional
 
 from mcp.server.fastmcp import FastMCP

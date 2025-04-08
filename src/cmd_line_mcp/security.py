@@ -150,11 +150,11 @@ def parse_command(command: str) -> Tuple[str, List[str]]:
 
 def validate_command(
     command: str,
-    read_commands: List[str] = None,
-    write_commands: List[str] = None,
-    system_commands: List[str] = None,
-    blocked_commands: List[str] = None,
-    dangerous_patterns: List[str] = None,
+    read_commands: Optional[List[str]] = None,
+    write_commands: Optional[List[str]] = None,
+    system_commands: Optional[List[str]] = None,
+    blocked_commands: Optional[List[str]] = None,
+    dangerous_patterns: Optional[List[str]] = None,
     allow_command_separators: bool = True,
 ) -> Dict[str, Union[bool, str, Optional[str]]]:
     """Validate a command for security.
