@@ -1,8 +1,14 @@
 """Security utilities for the command-line MCP server."""
 
+import logging
+import os
 import re
 import shlex
-from typing import Dict, List, Optional, Tuple, Union
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple, Union, Set
+
+# Configure logger
+logger = logging.getLogger(__name__)
 
 # These constant lists are just for reference and backward compatibility
 # Actual command lists should come from the Config object and be passed to validate_command
@@ -215,9 +221,7 @@ def validate_command(
                     "Command contains backtick command substitution. This is blocked for security reasons."
                 )
             else:
-                result["error"] = (
-                    f"Command contains dangerous pattern: {pattern}"
-                )
+                result["error"] = f"Command contains dangerous pattern: {pattern}"
             return result
 
     # If command chaining is allowed, validate each part
@@ -257,9 +261,7 @@ def validate_command(
                     return result
 
                 # Special handling for pipeline segments that aren't simple commands
-                if separator == "|" and (
-                    part.strip().startswith("-") or not cmd_part
-                ):
+                if separator == "|" and (part.strip().startswith("-") or not cmd_part):
                     # This is likely a continuation of a previous pipe, not a command itself
                     # For example: `command | grep "pattern"` vs `command | -v`
                     # We'll consider these as safe continuations
@@ -314,9 +316,7 @@ def validate_command(
 
     # Check if command is blocked
     if main_cmd in blocked_commands:
-        result["error"] = (
-            f"Command '{main_cmd}' is blocked for security reasons"
-        )
+        result["error"] = f"Command '{main_cmd}' is blocked for security reasons"
         return result
 
     # Determine command type with better error message
@@ -337,3 +337,211 @@ def validate_command(
         )
 
     return result
+
+
+def normalize_path(path: str) -> str:
+    """Normalize a path to absolute path with no symlinks or relative components.
+
+    Args:
+        path: The path to normalize
+
+    Returns:
+        Normalized absolute path
+    """
+    # Expand user directory for paths that start with ~
+    if path.startswith("~"):
+        path = os.path.expanduser(path)
+
+    # Convert to absolute path
+    abs_path = os.path.abspath(path)
+    # Normalize to resolve '..' and '.' components
+    norm_path = os.path.normpath(abs_path)
+    # Try to resolve any symlinks if possible
+    try:
+        real_path = os.path.realpath(norm_path)
+        return real_path
+    except (OSError, IOError):
+        # Fall back to normalized path if realpath fails
+        return norm_path
+
+
+def extract_directory_from_command(command: str) -> Optional[str]:
+    """Extract the working directory from a command.
+
+    Args:
+        command: The command string
+
+    Returns:
+        The working directory or None if it can't be determined
+    """
+    # We need to analyze the command to figure out which directory it's operating in
+    # This is a heuristic approach and may need refinement for specific commands
+
+    try:
+        # Special case for tilde paths in the command
+        if "~/" in command:
+            # Find the tilde path pattern
+            match = re.search(r"~/\S+", command)
+            if match:
+                tilde_path = match.group(0)
+                # Get everything up to a space, pipe, or other delimiter
+                # to capture just the path part
+                expanded_path = os.path.expanduser(tilde_path)
+
+                if os.path.isdir(expanded_path):
+                    return normalize_path(expanded_path)
+                else:
+                    # If it's a file, get its parent directory
+                    parent = os.path.dirname(expanded_path)
+                    if parent:
+                        return normalize_path(parent)
+
+        # Handle pipeline commands
+        if "|" in command:
+            # For piped commands, check each part and take the most specific directory
+            pipe_parts = command.split("|")
+            for part in pipe_parts:
+                # If any part of the pipeline accesses a specific directory, use that
+                dir_from_part = extract_directory_from_command(part.strip())
+                if dir_from_part and dir_from_part != os.getcwd():
+                    return dir_from_part
+
+            # If we couldn't find a specific directory in any part, analyze the first command
+            return extract_directory_from_command(pipe_parts[0].strip())
+
+        # Handle semicolon-separated commands
+        if ";" in command:
+            # For semicolon-separated commands, process each command independently
+            # Return the first specific directory found (not current directory)
+            commands = command.split(";")
+            for cmd in commands:
+                dir_from_cmd = extract_directory_from_command(cmd.strip())
+                if dir_from_cmd and dir_from_cmd != os.getcwd():
+                    return dir_from_cmd
+
+            # If no specific directory found, use the first command's directory
+            return extract_directory_from_command(commands[0].strip())
+
+        # Process a single command
+        parts = shlex.split(command)
+        if not parts:
+            return None
+
+        main_cmd = parts[0]
+        args = parts[1:]
+
+        # First check for directory arguments containing tilde expansion
+        for arg in args:
+            if not arg.startswith("-") and ("~" in arg):
+                expanded_path = os.path.expanduser(arg)
+
+                if os.path.isdir(expanded_path):
+                    return normalize_path(expanded_path)
+                parent = os.path.dirname(expanded_path)
+                if parent and parent != "." and os.path.isdir(parent):
+                    return normalize_path(parent)
+
+        # Handle common file/directory commands
+        if main_cmd in [
+            "ls",
+            "cd",
+            "find",
+            "du",
+            "rm",
+            "mkdir",
+            "rmdir",
+            "touch",
+            "chmod",
+            "chown",
+        ]:
+            # For these commands, the first non-flag argument is usually the directory
+            for arg in args:
+                if not arg.startswith("-"):
+                    # Get the directory part
+                    if os.path.isdir(arg):
+                        return normalize_path(arg)
+                    else:
+                        parent = os.path.dirname(arg)
+                        if parent:
+                            return normalize_path(parent)
+                        else:
+                            # If no parent directory specified, assume current directory
+                            return os.getcwd()
+
+            # If no directory argument found, assume current directory
+            return os.getcwd()
+
+        # For cat, less, head, tail, grep, etc. operating on files
+        elif main_cmd in ["cat", "less", "head", "tail", "grep", "wc"]:
+            # Get the last non-flag argument which is usually the file
+            file_arg = None
+            for arg in args:
+                if not arg.startswith("-"):
+                    file_arg = arg
+
+            if file_arg:
+                parent = os.path.dirname(file_arg)
+                if parent:
+                    return normalize_path(parent)
+                elif "~" in file_arg:
+                    # Handle tilde in path
+                    expanded = os.path.expanduser(file_arg)
+                    parent = os.path.dirname(expanded)
+                    if parent:
+                        return normalize_path(parent)
+
+            # Default to current directory
+            return os.getcwd()
+
+        # For commands that don't specify a directory
+        else:
+            # Default to current directory
+            return os.getcwd()
+
+    except (ValueError, IndexError) as e:
+        # If parsing fails, default to current directory
+        return os.getcwd()
+
+
+def is_directory_whitelisted(directory: str, whitelisted_dirs: List[str]) -> bool:
+    """Check if a directory is whitelisted or is a subdirectory of a whitelisted directory.
+
+    Args:
+        directory: The directory to check
+        whitelisted_dirs: List of whitelisted directories
+
+    Returns:
+        True if the directory is whitelisted, False otherwise
+    """
+    try:
+        normalized_dir = normalize_path(directory)
+
+        # Check if the directory is explicitly whitelisted
+        for whitelist_dir in whitelisted_dirs:
+            # Handle special whitelisted paths
+            if whitelist_dir == "~" or whitelist_dir.startswith("~/"):
+                # Convert ~ to user's home directory
+                normalized_whitelist = normalize_path(whitelist_dir)
+            else:
+                normalized_whitelist = normalize_path(whitelist_dir)
+
+            # Exact match
+            if normalized_dir == normalized_whitelist:
+                return True
+
+            # Check if it's a subdirectory of a whitelisted directory
+            if normalized_dir.startswith(normalized_whitelist + os.sep):
+                return True
+
+            # Handle wildcard paths
+            if "*" in whitelist_dir:
+                # Convert glob pattern to regex pattern
+                pattern = whitelist_dir.replace("*", ".*")
+                if re.match(pattern, normalized_dir):
+                    return True
+
+        return False
+    except Exception as e:
+        # If there's any error in normalization or checking, log it and return False for safety
+        logger.error(f"Error checking if directory is whitelisted: {str(e)}")
+        return False

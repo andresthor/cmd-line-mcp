@@ -10,7 +10,13 @@
     "max_output_size": 102400,
     "allow_user_confirmation": true,
     "require_session_id": false,
-    "allow_command_separators": true
+    "allow_command_separators": true,
+    "whitelisted_directories": [
+      "~/Downloads",
+      "/tmp",
+      "/usr/local/share"
+    ],
+    "auto_approve_directories_in_desktop_mode": false
   },
   "commands": {
     "read": [

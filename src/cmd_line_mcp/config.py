@@ -1,9 +1,13 @@
 """Configuration utilities for the command-line MCP server."""
 
+import logging
 import os
 import json
 from typing import Dict, Optional, Any, List
 from pathlib import Path
+
+# Configure logger
+logger = logging.getLogger(__name__)
 
 # Default configuration
 DEFAULT_CONFIG = {
@@ -20,6 +24,14 @@ DEFAULT_CONFIG = {
         "require_session_id": False,  # For Claude Desktop compatibility
         # Allow pipes, semicolons, ampersands
         "allow_command_separators": True,
+        # Directories that are allowed to run commands in
+        "whitelisted_directories": [
+            "/home",
+            "/tmp",
+            "/usr/local/share",
+        ],
+        # Auto-approve directory access in Claude Desktop mode
+        "auto_approve_directories_in_desktop_mode": False,
     },
     "commands": {
         "read": [
@@ -206,7 +218,7 @@ class Config:
             # Merge loaded config with default config
             self._update_config_recursively(self.config, loaded_config)
         except Exception as e:
-            print(f"Error loading configuration from {config_path}: {str(e)}")
+            logger.error(f"Error loading configuration from {config_path}: {str(e)}")
 
     def _update_config_recursively(self, target: Dict, source: Dict) -> None:
         """Recursively update configuration dictionary.
@@ -253,7 +265,7 @@ class Config:
                         if key.startswith("CMD_LINE_MCP_"):
                             self._env_vars[key] = value
         except Exception as e:
-            print(f"Error loading .env file from {env_file_path}: {str(e)}")
+            logger.error(f"Error loading .env file from {env_file_path}: {str(e)}")
 
     def _load_from_environment_variables(self) -> None:
         """Load configuration from environment variables."""
@@ -276,9 +288,7 @@ class Config:
                 category = config_key[9:]  # Remove "commands_" prefix
                 if category in ["read", "write", "system", "blocked"]:
                     # Split comma-separated values
-                    commands = [
-                        cmd.strip() for cmd in value.split(",") if cmd.strip()
-                    ]
+                    commands = [cmd.strip() for cmd in value.split(",") if cmd.strip()]
                     # Merge with existing commands rather than replacing them
                     # Make sure no duplicates by converting to set and back to list
                     existing_commands = self.config["commands"][category]
@@ -287,9 +297,7 @@ class Config:
             elif config_key == "dangerous_patterns":
                 # Split comma-separated patterns
                 patterns = [
-                    pattern.strip()
-                    for pattern in value.split(",")
-                    if pattern.strip()
+                    pattern.strip() for pattern in value.split(",") if pattern.strip()
                 ]
                 # Merge with existing patterns rather than replacing them
                 existing_patterns = self.config["commands"]["dangerous_patterns"]
@@ -311,7 +319,7 @@ class Config:
                         try:
                             self.config["security"][setting] = int(value)
                         except ValueError:
-                            print(f"Invalid integer value for {key}: {value}")
+                            logger.warning(f"Invalid integer value for {key}: {value}")
                     else:
                         self.config["security"][setting] = value
             elif config_key.startswith("server_"):
@@ -330,7 +338,7 @@ class Config:
                         try:
                             self.config["server"][setting] = int(value)
                         except ValueError:
-                            print(f"Invalid integer value for {key}: {value}")
+                            logger.warning(f"Invalid integer value for {key}: {value}")
                     else:
                         self.config["server"][setting] = value
             elif config_key.startswith("output_"):
@@ -349,7 +357,7 @@ class Config:
                         try:
                             self.config["output"][setting] = int(value)
                         except ValueError:
-                            print(f"Invalid integer value for {key}: {value}")
+                            logger.warning(f"Invalid integer value for {key}: {value}")
                     else:
                         self.config["output"][setting] = value
 
@@ -414,7 +422,7 @@ class Config:
                 with open(self._config_path, "w") as f:
                     json.dump(self.config, f, indent=2)
             except Exception as e:
-                print(
+                logger.error(
                     f"Error saving configuration to {self._config_path}: {str(e)}"
                 )
 
@@ -429,9 +437,7 @@ class Config:
             "write": self.config["commands"]["write"],
             "system": self.config["commands"]["system"],
             "blocked": self.config["commands"]["blocked"],
-            "dangerous_patterns": self.config["commands"][
-                "dangerous_patterns"
-            ],
+            "dangerous_patterns": self.config["commands"]["dangerous_patterns"],
         }
 
     def has_separator_support(self) -> Dict[str, bool]:
@@ -448,9 +454,7 @@ class Config:
         }  # |  # ;  # &
 
         dangerous_patterns = self.config["commands"]["dangerous_patterns"]
-        allow_separators = self.config["security"].get(
-            "allow_command_separators", True
-        )
+        allow_separators = self.config["security"].get("allow_command_separators", True)
 
         if not allow_separators:
             return {key: False for key in separators}
