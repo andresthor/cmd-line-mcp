@@ -374,55 +374,7 @@ class CommandLineMCP:
         # Store reference to silence linter warnings
         self._get_configuration_func = get_configuration
 
-        update_configuration_tool = self.app.tool()
-
-        @update_configuration_tool  # Keep decorator reference to satisfy linters
-        async def update_configuration(
-            config_updates: str, save: bool = False
-        ) -> Dict[str, Any]:
-            """
-            Update configuration settings.
-
-            Args:
-                config_updates: JSON string with configuration updates
-                save: Whether to save the configuration to file
-
-            Returns:
-                A dictionary with update status
-            """
-            try:
-                # Parse JSON updates
-                updates = json.loads(config_updates)
-
-                # Update configuration
-                self.config.update(updates, save)
-
-                # Reload command lists
-                command_lists = self.config.get_effective_command_lists()
-                self.read_commands = command_lists["read"]
-                self.write_commands = command_lists["write"]
-                self.system_commands = command_lists["system"]
-                self.blocked_commands = command_lists["blocked"]
-                self.dangerous_patterns = command_lists["dangerous_patterns"]
-
-                # Update separator support
-                self.separator_support = self.config.has_separator_support()
-
-                return {
-                    "success": True,
-                    "message": "Configuration updated successfully",
-                    "saved": save,
-                }
-            except json.JSONDecodeError as e:
-                return {"success": False, "message": f"Invalid JSON: {str(e)}"}
-            except Exception as e:
-                return {
-                    "success": False,
-                    "message": f"Error updating configuration: {str(e)}",
-                }
-
-        # Store reference to silence linter warnings
-        self._update_configuration_func = update_configuration
+        # update_configuration tool removed
 
     async def _execute_command(
         self,

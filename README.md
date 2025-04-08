@@ -250,7 +250,6 @@ This server provides the following MCP tools to AI assistants:
 4. `approve_command_type`: Grant approval for a command type (write or system) for the current session
 5. `get_command_help`: Get detailed help about command capabilities and examples
 6. `get_configuration`: Get the current configuration settings
-7. `update_configuration`: Update configuration settings at runtime
 
 ### Configuration Tool Details
 
@@ -269,35 +268,6 @@ config = await get_configuration()
 print(f"Command separator support: {config['separator_support']}")
 ```
 
-#### update_configuration
-
-This tool allows dynamic updating of the configuration at runtime:
-
-```python
-# Update security settings
-update_json = '''
-{
-  "security": {
-    "allow_command_separators": false
-  }
-}
-'''
-result = await update_configuration(config_updates=update_json, save=False)
-
-# Add a new command to the read list
-update_json = '''
-{
-  "commands": {
-    "read": ["ls", "pwd", "cat", "wc", "sort", "head", "tail"]
-  }
-}
-'''
-result = await update_configuration(config_updates=update_json, save=True)
-```
-
-- The `config_updates` parameter takes a JSON string with updates
-- The `save` parameter determines if changes are saved to the config file
-- After updating, all commands will immediately use the new settings
 
 ## Customizing Command Lists
 
