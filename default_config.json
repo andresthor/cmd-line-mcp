@@ -1,7 +1,7 @@
 {
   "server": {
     "name": "cmd-line-mcp",
-    "version": "0.3.0",
+    "version": "0.4.0",
     "description": "MCP server for safely executing command-line tools",
     "log_level": "INFO"
   },
