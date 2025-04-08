@@ -1,5 +1,9 @@
 # Command-Line MCP Server
 
+[![PyPI version](https://badge.fury.io/py/cmd-line-mcp.svg)](https://badge.fury.io/py/cmd-line-mcp)
+[![Python Versions](https://img.shields.io/pypi/pyversions/cmd-line-mcp.svg)](https://pypi.org/project/cmd-line-mcp/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 A secure Model Control Protocol (MCP) server that allows AI assistants to execute terminal commands with controlled directory access and command permissions.
 
 ## Overview
