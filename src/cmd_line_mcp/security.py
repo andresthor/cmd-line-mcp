@@ -4,127 +4,10 @@ import logging
 import os
 import re
 import shlex
-from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union, Set
+from typing import Dict, List, Optional, Tuple, Union
 
 # Configure logger
 logger = logging.getLogger(__name__)
-
-# These constant lists are just for reference and backward compatibility
-# Actual command lists should come from the Config object and be passed to validate_command
-# DO NOT use these lists directly in the code - always pass in the current command lists from Config
-READ_COMMANDS = [
-    "ls",
-    "pwd",
-    "cat",
-    "less",
-    "head",
-    "tail",
-    "grep",
-    "find",
-    "which",
-    "du",
-    "df",
-    "file",
-    "uname",
-    "hostname",
-    "uptime",
-    "date",
-    "whoami",
-    "id",
-    "env",
-    "history",
-    "man",
-    "info",
-    "help",
-    "sort",
-    "wc",
-]
-
-WRITE_COMMANDS = [
-    "cp",
-    "mv",
-    "rm",
-    "mkdir",
-    "rmdir",
-    "touch",
-    "chmod",
-    "chown",
-    "ln",
-    "echo",
-    "printf",
-    "export",
-    "tar",
-    "gzip",
-    "zip",
-    "unzip",
-    "awk",
-    "sed",
-]
-
-SYSTEM_COMMANDS = [
-    "ps",
-    "top",
-    "htop",
-    "who",
-    "netstat",
-    "ifconfig",
-    "ping",
-    "ssh",
-    "scp",
-    "curl",
-    "wget",
-    "xargs",
-]
-
-BLOCKED_COMMANDS = [
-    "sudo",
-    "su",
-    "bash",
-    "sh",
-    "zsh",
-    "ksh",
-    "csh",
-    "fish",
-    "screen",
-    "tmux",
-    "nc",
-    "telnet",
-    "nmap",
-    "dd",
-    "mkfs",
-    "mount",
-    "umount",
-    "shutdown",
-    "reboot",
-    "passwd",
-    "chpasswd",
-    "useradd",
-    "userdel",
-    "groupadd",
-    "groupdel",
-    "eval",
-    "exec",
-    "source",
-    ".",
-]
-
-DANGEROUS_PATTERNS = [
-    r"rm\s+-rf\s+/",  # Delete root directory
-    r">\s+/dev/(sd|hd|nvme|xvd)",  # Write to block devices
-    r">\s+/dev/null",  # Output redirection
-    r">\s+/etc/",  # Write to system config
-    r">\s+/boot/",  # Write to boot
-    r">\s+/bin/",  # Write to binaries
-    r">\s+/sbin/",  # Write to system binaries
-    r">\s+/usr/bin/",  # Write to user binaries
-    r">\s+/usr/sbin/",  # Write to system binaries
-    r">\s+/usr/local/bin/",  # Write to local binaries
-    r"2>&1",  # Redirect stderr to stdout
-    r"\$\(",  # Command substitution
-    r"\$\{\w+\}",  # Variable substitution
-    r"`",  # Backtick command substitution
-]
 
 
 def parse_command(command: str) -> Tuple[str, List[str]]:
@@ -160,38 +43,27 @@ def parse_command(command: str) -> Tuple[str, List[str]]:
 
 def validate_command(
     command: str,
-    read_commands: Optional[List[str]] = None,
-    write_commands: Optional[List[str]] = None,
-    system_commands: Optional[List[str]] = None,
-    blocked_commands: Optional[List[str]] = None,
-    dangerous_patterns: Optional[List[str]] = None,
+    read_commands: List[str],
+    write_commands: List[str],
+    system_commands: List[str],
+    blocked_commands: List[str],
+    dangerous_patterns: List[str],
     allow_command_separators: bool = True,
 ) -> Dict[str, Union[bool, str, Optional[str]]]:
     """Validate a command for security.
 
     Args:
         command: The command to validate
-        read_commands: List of read-only commands (defaults to READ_COMMANDS if None)
-        write_commands: List of write commands (defaults to WRITE_COMMANDS if None)
-        system_commands: List of system commands (defaults to SYSTEM_COMMANDS if None)
-        blocked_commands: List of blocked commands (defaults to BLOCKED_COMMANDS if None)
-        dangerous_patterns: List of dangerous patterns to block (defaults to DANGEROUS_PATTERNS if None)
+        read_commands: List of read-only commands
+        write_commands: List of write commands
+        system_commands: List of system commands
+        blocked_commands: List of blocked commands
+        dangerous_patterns: List of dangerous patterns to block
         allow_command_separators: Whether to allow command separators (|, ;, &)
 
     Returns:
         A dictionary with validation results
     """
-    # Use default command lists if not provided
-    if read_commands is None:
-        read_commands = READ_COMMANDS
-    if write_commands is None:
-        write_commands = WRITE_COMMANDS
-    if system_commands is None:
-        system_commands = SYSTEM_COMMANDS
-    if blocked_commands is None:
-        blocked_commands = BLOCKED_COMMANDS
-    if dangerous_patterns is None:
-        dangerous_patterns = DANGEROUS_PATTERNS
     result = {"is_valid": False, "command_type": None, "error": None}
 
     # Empty command
@@ -502,7 +374,7 @@ def extract_directory_from_command(command: str) -> Optional[str]:
             # Default to current directory
             return os.getcwd()
 
-    except (ValueError, IndexError) as e:
+    except (ValueError, IndexError):
         # If parsing fails, default to current directory
         return os.getcwd()
 
@@ -545,7 +417,7 @@ def is_directory_whitelisted(directory: str, whitelisted_dirs: List[str]) -> boo
                     return True
 
         return False
-    except Exception as e:
-        # If there's any error in normalization or checking, log it and return False for safety
-        logger.error(f"Error checking if directory is whitelisted: {str(e)}")
+    except Exception as error:
+        # If there's any error in normalization or checking, log it and return False
+        logger.error(f"Error checking if directory is whitelisted: {str(error)}")
         return False

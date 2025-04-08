@@ -18,38 +18,87 @@ def server():
 
 def test_validate_command():
     """Test the command validation function."""
+    # Setup default command lists for testing
+    read_commands = ["ls", "cat", "grep", "sort", "head", "tail", "find", "wc"]
+    write_commands = ["mkdir", "touch", "rm", "cp", "mv"]
+    system_commands = ["ps", "top", "ping", "netstat"]
+    blocked_commands = ["sudo", "bash", "sh", "zsh", "eval", "exec"]
+    dangerous_patterns = [r"rm\s+-rf\s+/", r">\s+/etc/", r"\$\(", r"`"]
+    
     # Valid read command
-    result = validate_command("ls -la")
+    result = validate_command(
+        "ls -la", 
+        read_commands, 
+        write_commands, 
+        system_commands, 
+        blocked_commands, 
+        dangerous_patterns
+    )
     assert result["is_valid"] is True
     assert result["command_type"] == "read"
     assert result["error"] is None
 
     # Valid write command
-    result = validate_command("mkdir test_dir")
+    result = validate_command(
+        "mkdir test_dir", 
+        read_commands, 
+        write_commands, 
+        system_commands, 
+        blocked_commands, 
+        dangerous_patterns
+    )
     assert result["is_valid"] is True
     assert result["command_type"] == "write"
     assert result["error"] is None
 
     # Valid system command
-    result = validate_command("ps aux")
+    result = validate_command(
+        "ps aux", 
+        read_commands, 
+        write_commands, 
+        system_commands, 
+        blocked_commands, 
+        dangerous_patterns
+    )
     assert result["is_valid"] is True
     assert result["command_type"] == "system"
     assert result["error"] is None
 
     # Blocked command
-    result = validate_command("sudo rm -rf /")
+    result = validate_command(
+        "sudo rm -rf /", 
+        read_commands, 
+        write_commands, 
+        system_commands, 
+        blocked_commands, 
+        dangerous_patterns
+    )
     assert result["is_valid"] is False
     assert result["command_type"] is None
     assert result["error"] is not None
 
     # Dangerous pattern
-    result = validate_command("rm -rf /")
+    result = validate_command(
+        "rm -rf /", 
+        read_commands, 
+        write_commands, 
+        system_commands, 
+        blocked_commands, 
+        dangerous_patterns
+    )
     assert result["is_valid"] is False
     assert result["command_type"] is None
     assert result["error"] is not None
 
     # Unsupported command
-    result = validate_command("nonsense_command")
+    result = validate_command(
+        "nonsense_command", 
+        read_commands, 
+        write_commands, 
+        system_commands, 
+        blocked_commands, 
+        dangerous_patterns
+    )
     assert result["is_valid"] is False
     assert result["command_type"] is None
     assert result["error"] is not None
@@ -176,9 +225,18 @@ async def test_session_management(server):
     assert server.session_manager.has_command_type_approval(
         session_id, "write"
     )
+    # Store original session content
+    original_session = server.session_manager.sessions[session_id].copy()
+    
+    # Set the last_active time to be way in the past to ensure it gets cleaned up
+    server.session_manager.sessions[session_id]["last_active"] = 0
+    
     # Test session timeout
-    server.session_manager.clean_old_sessions(0)  # Force session cleanup
+    server.session_manager.clean_old_sessions(10)  # Force session cleanup with 10 sec timeout
     assert session_id not in server.session_manager.sessions
+    
+    # Restore the session for other tests that might depend on it
+    server.session_manager.sessions[session_id] = original_session
 
     # Clean up test file if it was created
     await server._execute_command("rm -f test_file.tmp", session_id=session_id)

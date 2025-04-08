@@ -11,7 +11,7 @@ pytestmark = pytest.mark.filterwarnings("ignore::DeprecationWarning")
 
 
 def test_config_init_default():
-    """Test initializing Config with defaults."""
+    """Test initializing Config with defaults loaded from default_config.json."""
     config = Config()
     assert config.config is not None
     # Check that default config has basic sections
@@ -20,12 +20,18 @@ def test_config_init_default():
     assert "security" in config.config
     assert "output" in config.config
 
-    # Check new structure of commands section
+    # Check structure of commands section
     assert "read" in config.config["commands"]
     assert "write" in config.config["commands"]
     assert "system" in config.config["commands"]
     assert "blocked" in config.config["commands"]
     assert "dangerous_patterns" in config.config["commands"]
+    
+    # Check that default config has some expected values
+    assert isinstance(config.config["commands"]["read"], list)
+    assert len(config.config["commands"]["read"]) > 0
+    assert isinstance(config.config["commands"]["write"], list)
+    assert len(config.config["commands"]["write"]) > 0
 
 
 def test_config_from_file():
@@ -170,6 +176,36 @@ def test_load_json_error_handling():
     finally:
         # Clean up the temporary file
         os.unlink(temp_file_path)
+        
+def test_load_default_config():
+    """Test that the default configuration is properly loaded."""
+    # Create a Config instance with no parameters
+    config = Config()
+    
+    # Check that some expected commands are in the read commands list
+    read_commands = config.config["commands"]["read"]
+    assert "ls" in read_commands
+    assert "cat" in read_commands
+    
+    # Check that some expected commands are in the write commands list
+    write_commands = config.config["commands"]["write"]
+    assert "mkdir" in write_commands
+    assert "touch" in write_commands
+    
+    # Check that some expected commands are in the system commands list
+    system_commands = config.config["commands"]["system"]
+    assert "ps" in system_commands
+    
+    # Check that some expected commands are in the blocked commands list
+    blocked_commands = config.config["commands"]["blocked"]
+    assert "sudo" in blocked_commands
+    
+    # Check some security settings
+    assert "whitelisted_directories" in config.config["security"]
+    
+    # Check that server info is loaded
+    assert "name" in config.config["server"]
+    assert "version" in config.config["server"]
 
 
 def test_config_update():
@@ -228,6 +264,70 @@ def test_config_save_to_file():
     finally:
         # Clean up the temporary file
         os.unlink(temp_file_path)
+        
+def test_config_precedence():
+    """Test configuration loading precedence."""
+    # Clean existing environment variables
+    env_vars = [var for var in os.environ if var.startswith("CMD_LINE_MCP_")]
+    existing_vars = {}
+    for var in env_vars:
+        existing_vars[var] = os.environ[var]
+        del os.environ[var]
+        
+    # Create three temporary files with different configurations
+    with tempfile.NamedTemporaryFile(mode="w+", suffix=".json", delete=False) as user_config_file:
+        user_config = {
+            "server": {"name": "user-config", "log_level": "DEBUG"},
+            "commands": {"read": ["user-read-cmd"]},
+        }
+        json.dump(user_config, user_config_file)
+        user_config_path = user_config_file.name
+    
+    with tempfile.NamedTemporaryFile(mode="w+", suffix=".env", delete=False) as env_file:
+        env_file.write("CMD_LINE_MCP_SERVER_NAME=env-file-name\n")
+        env_file.write("CMD_LINE_MCP_COMMANDS_READ=env-read-cmd\n")
+        env_file_path = env_file.name
+        
+    try:
+        # Set environment variable with highest precedence
+        os.environ["CMD_LINE_MCP_SERVER_NAME"] = "env-var-name"
+        
+        # Create config with user config and env file
+        config = Config(config_path=user_config_path, env_file_path=env_file_path)
+        
+        # Check that values are loaded according to precedence:
+        # 1. Environment variables (highest)
+        # 2. Env file
+        # 3. User config file
+        # 4. Default config (lowest)
+        
+        # Environment variable should take precedence
+        assert config.get("server", "name") == "env-var-name"
+        
+        # Environment file should take precedence over user config for READ commands
+        assert "env-read-cmd" in config.get("commands", "read")
+        
+        # Check user config overrides default for log_level
+        assert config.get("server", "log_level") == "DEBUG"
+        
+        # Ensure some default values still exist from default_config.json
+        system_commands = config.get("commands", "system")
+        assert isinstance(system_commands, list)
+        assert len(system_commands) > 0
+        assert "ps" in system_commands  # This should come from default_config.json
+    finally:
+        # Clean up
+        os.unlink(user_config_path)
+        os.unlink(env_file_path)
+        
+        # Clean up environment variables
+        for var in ["CMD_LINE_MCP_SERVER_NAME"]:
+            if var in os.environ:
+                del os.environ[var]
+        
+        # Restore existing environment variables
+        for var, value in existing_vars.items():
+            os.environ[var] = value
 
 
 @pytest.mark.skip(reason="Environment file handling needs to be fixed")

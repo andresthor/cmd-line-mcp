@@ -69,10 +69,10 @@ cmd-line-mcp --config config.json   # With specific config
 
 ### Configuration Options
 
-The server supports three configuration methods in order of precedence:
+The server supports four configuration methods in order of precedence:
 
-1. **Default built-in configuration**
-2. **JSON configuration file** (recommended)
+1. **Built-in default configuration** (default_config.json)
+2. **JSON configuration file** (recommended for customization)
    ```bash
    cmd-line-mcp --config config.json
    ```
@@ -84,6 +84,8 @@ The server supports three configuration methods in order of precedence:
    ```bash
    cmd-line-mcp --config config.json --env .env
    ```
+
+The default configuration is stored in `default_config.json` and is included with the package. You can copy this file to create your own custom configuration.
 
 #### Core Configuration Settings
 

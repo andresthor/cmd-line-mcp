@@ -2,7 +2,7 @@
 
 import time
 import os
-from typing import Dict, Any, Set, List
+from typing import Dict, Any, Set
 
 
 class SessionManager:

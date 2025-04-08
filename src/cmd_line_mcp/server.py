@@ -6,8 +6,7 @@ import argparse
 import asyncio
 import logging
 import os
-import uuid
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from mcp.server.fastmcp import FastMCP
 
@@ -348,7 +347,7 @@ class CommandLineMCP:
                         "output": "",
                         "error": f"Read command - access to directory '{working_dir}' is not allowed. Only whitelisted directories can be accessed.\n"
                         + f"Whitelisted directories include: {', '.join(self.whitelisted_directories)}\n"
-                        + f"Note: To request access to this directory, use the approve_directory tool with:\n"
+                        + "Note: To request access to this directory, use the approve_directory tool with:\n"
                         + f'  approve_directory(directory="{working_dir}", session_id="{desktop_session_id}", remember=True)',
                         "directory": working_dir,
                         "session_id": desktop_session_id,
@@ -808,7 +807,7 @@ class CommandLineMCP:
                     "output": "",
                     "error": f"Access to directory '{working_dir}' is not allowed. Only whitelisted directories can be accessed.\n"
                     + f"Whitelisted directories include: {', '.join(self.whitelisted_directories)}\n"
-                    + f"Note: To request access to this directory, use the approve_directory tool with:\n"
+                    + "Note: To request access to this directory, use the approve_directory tool with:\n"
                     + f'  approve_directory(directory="{working_dir}", session_id="{desktop_session_id}", remember=True)',
                     "directory": working_dir,
                     "session_id": desktop_session_id,

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cmd-line-mcp"
-version = "0.3.0"
+version = "0.4.0"
 description = "Command-line MCP server for safe command execution"
 readme = "README.md"
 authors = [
@@ -35,9 +35,14 @@ cmd-line-mcp = "cmd_line_mcp.server:main"
 [tool.setuptools]
 package-dir = {"" = "src"}
 packages = ["cmd_line_mcp"]
+include-package-data = true
+
+[tool.setuptools.data-files]
+"." = ["default_config.json"]
 
 [tool.setuptools.package-data]
 examples = ["*.py"]
+# default_config.json is kept in the root directory as the single source of truth
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

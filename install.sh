@@ -20,7 +20,7 @@ pip install -e .
 # Create a config file if it doesn't exist
 if [ ! -f "config.json" ]; then
     echo "Creating configuration file..."
-    cp config.json.example config.json
+    cp default_config.json config.json
     echo "You can customize your configuration in config.json"
 fi
 

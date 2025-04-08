@@ -3,151 +3,12 @@
 import logging
 import os
 import json
+from importlib.resources import files
 from typing import Dict, Optional, Any, List
 from pathlib import Path
 
 # Configure logger
 logger = logging.getLogger(__name__)
-
-# Default configuration
-DEFAULT_CONFIG = {
-    "server": {
-        "name": "cmd-line-mcp",
-        "version": "0.3.0",
-        "description": "MCP server for safely executing command-line tools",
-        "log_level": "INFO",
-    },
-    "security": {
-        "session_timeout": 3600,  # 1 hour
-        "max_output_size": 102400,  # 100KB
-        "allow_user_confirmation": True,
-        "require_session_id": False,  # For Claude Desktop compatibility
-        # Allow pipes, semicolons, ampersands
-        "allow_command_separators": True,
-        # Directories that are allowed to run commands in
-        "whitelisted_directories": [
-            "/home",
-            "/tmp",
-            "/usr/local/share",
-        ],
-        # Auto-approve directory access in Claude Desktop mode
-        "auto_approve_directories_in_desktop_mode": False,
-    },
-    "commands": {
-        "read": [
-            "ls",
-            "pwd",
-            "cat",
-            "less",
-            "head",
-            "tail",
-            "grep",
-            "find",
-            "which",
-            "du",
-            "df",
-            "file",
-            "uname",
-            "hostname",
-            "uptime",
-            "date",
-            "whoami",
-            "id",
-            "env",
-            "history",
-            "man",
-            "info",
-            "help",
-            "sort",
-            "wc",
-        ],
-        "write": [
-            "cp",
-            "mv",
-            "rm",
-            "mkdir",
-            "rmdir",
-            "touch",
-            "chmod",
-            "chown",
-            "ln",
-            "echo",
-            "printf",
-            "export",
-            "tar",
-            "gzip",
-            "zip",
-            "unzip",
-            "awk",
-            "sed",
-        ],
-        "system": [
-            "ps",
-            "top",
-            "htop",
-            "who",
-            "netstat",
-            "ifconfig",
-            "ping",
-            "ssh",
-            "scp",
-            "curl",
-            "wget",
-            "xargs",
-        ],
-        "blocked": [
-            "sudo",
-            "su",
-            "bash",
-            "sh",
-            "zsh",
-            "ksh",
-            "csh",
-            "fish",
-            "screen",
-            "tmux",
-            "nc",
-            "telnet",
-            "nmap",
-            "dd",
-            "mkfs",
-            "mount",
-            "umount",
-            "shutdown",
-            "reboot",
-            "passwd",
-            "chpasswd",
-            "useradd",
-            "userdel",
-            "groupadd",
-            "groupdel",
-            "eval",
-            "exec",
-            "source",
-            ".",
-        ],
-        "dangerous_patterns": [
-            r"rm\s+-rf\s+/",  # Delete root directory
-            r">\s+/dev/(sd|hd|nvme|xvd)",  # Write to block devices
-            r">\s+/dev/null",  # Output redirection
-            r">\s+/etc/",  # Write to system config
-            r">\s+/boot/",  # Write to boot
-            r">\s+/bin/",  # Write to binaries
-            r">\s+/sbin/",  # Write to system binaries
-            r">\s+/usr/bin/",  # Write to user binaries
-            r">\s+/usr/sbin/",  # Write to system binaries
-            r">\s+/usr/local/bin/",  # Write to local binaries
-            r"2>&1",  # Redirect stderr to stdout
-            r"\$\(",  # Command substitution
-            r"\$\{\w+\}",  # Variable substitution
-            r"`",  # Backtick command substitution
-        ],
-    },
-    "output": {
-        "max_size": 102400,  # 100KB
-        "format": "text",
-    },
-}
 
 
 class Config:
@@ -164,18 +25,21 @@ class Config:
             config_path: Optional path to a configuration file
             env_file_path: Optional path to a .env file
         """
-        self.config = DEFAULT_CONFIG.copy()
         self._config_path = config_path
         self._env_file_path = env_file_path
         self._config_cache = {}
         self._env_vars = {}
+        self.config = {}
 
         # Load configuration in order of precedence:
-        # 1. Default config
+        # 1. Built-in default_config.json
         # 2. Config file from environment variable
         # 3. Config file from constructor parameter
         # 4. .env file
         # 5. Environment variables
+
+        # Load the built-in default configuration
+        self._load_default_config()
 
         # Try to load configuration from environment variable
         env_config_path = os.environ.get("CMD_LINE_MCP_CONFIG")
@@ -208,6 +72,45 @@ class Config:
 
         # Override with environment variables - this now takes all CMD_LINE_MCP_* vars
         self._load_from_environment_variables()
+        
+    def _load_default_config(self) -> None:
+        """Load the default configuration from the built-in default_config.json file."""
+        try:
+            # Look in the root directory (3 levels up from this file)
+            root_config_path = Path(__file__).parent.parent.parent / "default_config.json"
+            if root_config_path.exists():
+                with open(root_config_path, "r") as f:
+                    self.config = json.load(f)
+                    logger.info(f"Loaded default configuration from {root_config_path}")
+                    return
+                    
+            # If not found in the root directory, check current working directory
+            cwd_config_path = Path.cwd() / "default_config.json"
+            if cwd_config_path.exists():
+                with open(cwd_config_path, "r") as f:
+                    self.config = json.load(f)
+                    msg = "Loaded default configuration from current directory"
+                    logger.info(f"{msg}: {cwd_config_path}")
+                    return
+                    
+            logger.error("Could not find default_config.json in any location - using empty configuration")
+            # If we get here, we couldn't find the default config anywhere
+            # Initialize with empty structure to prevent errors
+            self.config = {
+                "server": {},
+                "security": {},
+                "commands": {"read": [], "write": [], "system": [], "blocked": [], "dangerous_patterns": []},
+                "output": {}
+            }
+        except Exception as e:
+            logger.error(f"Error loading default configuration: {str(e)}")
+            # Initialize with empty structure to prevent errors
+            self.config = {
+                "server": {},
+                "security": {},
+                "commands": {"read": [], "write": [], "system": [], "blocked": [], "dangerous_patterns": []},
+                "output": {}
+            }
 
     def _load_config_from_json(self, config_path: str) -> None:
         """Load configuration from a JSON file.
