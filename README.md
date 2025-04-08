@@ -1,23 +1,24 @@
 # Command-Line MCP Server
 
-A highly configurable Model Control Protocol (MCP) server that safely runs command-line arguments for Unix/macOS systems.
+A secure Model Control Protocol (MCP) server that allows AI assistants to execute terminal commands with controlled directory access and command permissions.
 
 ## Overview
 
-This MCP server allows AI assistants to execute common Unix/macOS terminal commands through a controlled and secure interface. It supports the top ~40 most used terminal commands with appropriate security measures and offers extensive customization options. The command lists, security rules, and server behavior can all be tailored to your specific needs using configuration files, environment variables, or runtime updates.
+Command-Line MCP provides a security layer between AI assistants and your terminal. It implements a dual security model:
 
-## Features
+1. **Command Permissions**: Commands are categorized as read (safe), write (changes data), or system (affects system state), with different approval requirements
+2. **Directory Permissions**: Commands can only access explicitly whitelisted directories or directories approved during a session
 
-- Safe execution of common Unix/macOS commands
-- Security validation based on command type
-- Command categorization (read, write, system)
-- Interactive permission management
-- Session-based approval system
-- Configuration via environment variables or JSON file
-- Comprehensive command filtering and pattern matching
-- Support for command chaining via pipes (`|`), semicolons (`;`), and ampersands (`&`)
-- Claude Desktop compatibility mode with auto-approval
-- Detailed command metadata and help for AI assistants
+AI assistants interact with this server using standardized MCP tools, enabling safe terminal command execution while preventing access to sensitive files or dangerous operations. You can configure the security level from highly restrictive to more permissive based on your needs.
+
+## Key Features
+
+| Security | Usability | Integration |
+|----------|-----------|-------------|
+| Directory whitelisting | Command categorization (read/write/system) | Claude Desktop compatibility |
+| Command filtering | Persistent session permissions | Standard MCP protocol |
+| Pattern matching | Command chaining (pipes, etc.) | Auto-approval options |
+| Dangerous command blocking | Intuitive approval workflow | Multiple config methods |
 
 ## Supported Commands
 
@@ -30,188 +31,101 @@ This MCP server allows AI assistants to execute common Unix/macOS terminal comma
 ### System Commands
 - `ps`, `top`, `htop`, `who`, `netstat`, `ifconfig`, `ping`, etc.
 
-## Security Features
+## Security Architecture
 
-- Command categorization for permission control
-- Blocked dangerous commands (sudo, eval, etc.)
-- Pattern matching to prevent dangerous operations
-- Session management for persistent approvals
-- Per-session permission granting
-- Option to grant approval for a command type for the entire session
-- Automatic session timeouts
-- Secure handling of command chaining (pipes, sequences, etc.)
-- Configurable security options for different environments
+The system implements a multi-layered security approach:
 
-## Installation
+```
+┌────────────────────────────────────────────────────────────┐
+│                   COMMAND-LINE MCP SERVER                   │
+├────────────────┬───────────────────────┬──────────────────┤
+│ COMMAND SECURITY  │   DIRECTORY SECURITY   │ SESSION SECURITY │
+├────────────────┼───────────────────────┼──────────────────┤
+│ ✓ Read commands  │ ✓ Directory whitelist  │ ✓ Session IDs    │
+│ ✓ Write commands │ ✓ Runtime approvals    │ ✓ Persistent     │
+│ ✓ System commands│ ✓ Path validation      │   permissions    │
+│ ✓ Blocked list   │ ✓ Home dir expansion   │ ✓ Auto timeouts  │
+│ ✓ Pattern filters│ ✓ Subdirectory check   │ ✓ Desktop mode   │
+└────────────────┴───────────────────────┴──────────────────┘
+```
+
+All security features can be configured from restrictive to permissive based on your threat model and convenience requirements.
+
+## Quick Start
 
 ```bash
-# Clone the repository
+# Install
 git clone https://github.com/yourusername/cmd-line-mcp.git
 cd cmd-line-mcp
-
-# Run the install script (Linux/macOS)
-./install.sh
-
-# Or install manually:
 python -m venv venv
 source venv/bin/activate
 pip install -e .
-cp config.json.example config.json  # Create initial config
-```
-
-## Usage
-
-### Running the Server
-
-```bash
-# Run with default configuration
-cmd-line-mcp
-
-# Run with custom configuration file
-cmd-line-mcp --config /path/to/config.json
-```
-
-### Configuration
-
-You can configure the server using three methods:
-
-1. JSON configuration file (recommended for complete configuration)
-2. Environment variables (for overriding specific settings)
-3. `.env` file (for environment-specific overrides)
-
-**Configuration Best Practices:**
-- Use the JSON configuration file as your primary configuration method
-- Use environment variables or `.env` files for environment-specific overrides
-- JSON provides comprehensive configuration, while env vars are better for quick overrides
-
-#### Using a configuration file
-
-Create a JSON file based on the example in `config.json.example`:
-
-```bash
 cp config.json.example config.json
-# Edit config.json to customize settings
-cmd-line-mcp --config config.json
+
+# Run
+cmd-line-mcp                        # With default config
+cmd-line-mcp --config config.json   # With specific config
 ```
 
-The configuration file has this structure:
+### Configuration Options
+
+The server supports three configuration methods in order of precedence:
+
+1. **Default built-in configuration**
+2. **JSON configuration file** (recommended)
+   ```bash
+   cmd-line-mcp --config config.json
+   ```
+3. **Environment variables** (for specific overrides)
+   ```bash
+   export CMD_LINE_MCP_SECURITY_WHITELISTED_DIRECTORIES="~,/tmp"
+   ```
+4. **.env file** (for environment-specific settings)
+   ```bash
+   cmd-line-mcp --config config.json --env .env
+   ```
+
+#### Core Configuration Settings
 
 ```json
 {
-  "server": {
-    "name": "cmd-line-mcp",
-    "version": "0.2.0",
-    "description": "MCP server for safely executing command-line tools",
-    "log_level": "INFO"
-  },
   "security": {
-    "session_timeout": 3600,
-    "max_output_size": 102400,
-    "allow_user_confirmation": true,
+    "whitelisted_directories": ["/home", "/tmp", "~"],
+    "auto_approve_directories_in_desktop_mode": false, 
     "require_session_id": false,
     "allow_command_separators": true
   },
   "commands": {
-    "read": [
-      "ls", "pwd", "cat", "less", "head", "tail", "grep",
-      "find", "which", "du", "df", "file", "sort", "..."
-    ],
-    "write": [
-      "cp", "mv", "rm", "mkdir", "rmdir", "touch", "chmod", "..."
-    ],
-    "system": [
-      "ps", "top", "htop", "who", "netstat", "ifconfig", "..."
-    ],
-    "blocked": [
-      "sudo", "su", "bash", "sh", "zsh", "ksh", "..."
-    ],
-    "dangerous_patterns": [
-      "rm\\s+-rf\\s+/",
-      ">\\s+/dev/(sd|hd|nvme|xvd)",
-      "..."
-    ]
-  },
-  "output": {
-    "max_size": 102400,
-    "format": "text"
+    "read": ["ls", "cat", "grep"], 
+    "write": ["touch", "mkdir", "rm"],
+    "system": ["ps", "ping"]
   }
 }
 ```
 
-#### Using environment variables and .env files for overrides
+#### Environment Variable Format
 
-While the JSON configuration file is recommended for comprehensive configuration, you can use environment variables or a `.env` file to override specific settings. This is particularly useful for:
+Environment variables use a predictable naming pattern:
+```
+CMD_LINE_MCP_<SECTION>_<SETTING>
+```
 
-1. Deploying to different environments (dev, test, prod)
-2. Overriding specific settings without modifying the JSON file
-3. Setting environment-specific values like log levels or timeouts
-
-**Environment Variables Example:**
-
+Examples:
 ```bash
-# Override log level for debugging
-export CMD_LINE_MCP_SERVER_LOG_LEVEL=DEBUG
+# Security settings
+export CMD_LINE_MCP_SECURITY_WHITELISTED_DIRECTORIES="/projects,/var/data"
+export CMD_LINE_MCP_SECURITY_AUTO_APPROVE_DIRECTORIES_IN_DESKTOP_MODE=true
 
-# Extend session timeout
-export CMD_LINE_MCP_SECURITY_SESSION_TIMEOUT=7200
-
-# Add a custom command to the read commands list (comma-separated)
-export CMD_LINE_MCP_COMMANDS_READ="wc,nl,column,jq" 
-
-cmd-line-mcp --config /path/to/config.json
+# Command additions (these merge with defaults)
+export CMD_LINE_MCP_COMMANDS_READ="awk,jq,wc"
 ```
 
-**Using a `.env` file for overrides:**
+### Claude Desktop Integration
 
-Create a `.env` file with only the settings you want to override:
+#### Setup
 
-```
-# Set to DEBUG for more detailed logs
-CMD_LINE_MCP_SERVER_LOG_LEVEL=DEBUG
-
-# Extend session timeout to 2 hours
-CMD_LINE_MCP_SECURITY_SESSION_TIMEOUT=7200
-
-# For Claude Desktop compatibility
-CMD_LINE_MCP_SECURITY_REQUIRE_SESSION_ID=false
-```
-
-Run the server with the base config plus `.env` overrides:
-
-```bash
-cmd-line-mcp --config /path/to/config.json --env /path/to/.env
-```
-
-**Configuration Precedence Order:**
-
-The configuration methods follow this precedence order (from lowest to highest):
-1. Default configuration (built-in)
-2. Config file from CMD_LINE_MCP_CONFIG environment variable
-3. Config file from --config parameter
-4. `.env` file
-5. Environment variables (highest precedence)
-
-This means environment variables will override values from the `.env` file, which will override values from the JSON configuration file.
-
-### Using with Claude for Desktop
-
-1. Install Claude for Desktop from [https://claude.ai/download](https://claude.ai/download)
-2. Configure Claude for Desktop to use this MCP server:
-
-Edit `~/Library/Application Support/Claude/claude_desktop_config.json`:
-
-```json
-{
-  "mcpServers": {
-    "cmd-line": {
-      "command": "/path/to/venv/bin/cmd-line-mcp",
-      "args": ["--config", "/path/to/config.json"]
-    }
-  }
-}
-```
-
-You can also specify environment variable overrides directly in the Claude Desktop configuration:
+1. Install [Claude for Desktop](https://claude.ai/download)
+2. Configure in `~/Library/Application Support/Claude/claude_desktop_config.json`:
 
 ```json
 {
@@ -220,176 +134,179 @@ You can also specify environment variable overrides directly in the Claude Deskt
       "command": "/path/to/venv/bin/cmd-line-mcp",
       "args": ["--config", "/path/to/config.json"],
       "env": {
-        "CMD_LINE_MCP_SERVER_LOG_LEVEL": "DEBUG",
-        "CMD_LINE_MCP_SECURITY_SESSION_TIMEOUT": "7200",
-        "CMD_LINE_MCP_SECURITY_REQUIRE_SESSION_ID": "false"
+        "CMD_LINE_MCP_SECURITY_REQUIRE_SESSION_ID": "false",
+        "CMD_LINE_MCP_SECURITY_AUTO_APPROVE_DIRECTORIES_IN_DESKTOP_MODE": "true"
       }
     }
   }
 }
 ```
 
-For best compatibility with Claude Desktop, ensure these settings in your config.json:
+#### Recommended Claude Desktop Settings
+
+For best experience, configure:
+- `require_session_id: false` - Essential to prevent approval loops
+- `auto_approve_directories_in_desktop_mode: true` - Optional for convenient access
+- Include common directories in your whitelist
+
+After configuration, restart Claude for Desktop.
+
+## AI Assistant Tools
+
+The server provides these MCP tools for AI assistants:
+
+| Tool | Purpose | Needs Approval |
+|------|---------|----------------|
+| `execute_command` | Run any command type | Yes, for write/system commands |
+| `execute_read_command` | Run read-only commands | Directory approval only |
+| `approve_directory` | Grant access to a directory | N/A - it's an approval tool |
+| `approve_command_type` | Grant permission for command category | N/A - it's an approval tool |
+| `list_directories` | Show authorized directories | No |
+| `list_available_commands` | Show command categories | No |
+| `get_command_help` | Get command usage guidance | No |
+| `get_configuration` | View current settings | No |
+
+### Tool Examples
+
+#### Directory Management
+
+```python
+# Check available directories
+dirs = await list_directories(session_id="session123")
+whitelisted = dirs["whitelisted_directories"]
+approved = dirs["session_approved_directories"]
+
+# Request permission for a directory
+if "/projects/my-data" not in whitelisted and "/projects/my-data" not in approved:
+    result = await approve_directory(
+        directory="/projects/my-data", 
+        session_id="session123"
+    )
+```
+
+#### Command Execution
+
+```python
+# Read commands (read permissions enforced)
+result = await execute_read_command("ls -la ~/Documents")
+
+# Any command type (may require command type approval)
+result = await execute_command(
+    command="mkdir -p ~/Projects/new-folder", 
+    session_id="session123"
+)
+```
+
+#### Get Configuration
+
+```python
+# Check current settings
+config = await get_configuration()
+whitelist = config["directory_whitelisting"]["whitelisted_directories"]
+```
+
+
+## Directory Security System
+
+The server restricts command execution to specific directories, preventing access to sensitive files.
+
+### Directory Security Modes
+
+The system supports three security modes:
+
+| Mode | Description | Best For | Configuration |
+|------|-------------|----------|--------------|
+| **Strict** | Only whitelisted directories allowed | Maximum security | `auto_approve_directories_in_desktop_mode: false` |
+| **Approval** | Non-whitelisted directories require explicit approval | Interactive use | Default behavior for standard clients |
+| **Auto-approve** | Auto-approves directories for Claude Desktop | Convenience | `auto_approve_directories_in_desktop_mode: true` |
+
+### Whitelisted Directory Configuration
 
 ```json
 "security": {
-  "require_session_id": false,  // Prevents approval loops with Claude Desktop
-  "allow_user_confirmation": true
+  "whitelisted_directories": [
+    "/home",                  // System directories
+    "/tmp",
+    "~",                      // User's home
+    "~/Documents"             // Common user directories
+  ],
+  "auto_approve_directories_in_desktop_mode": false  // Set to true for convenience
 }
 ```
 
-3. Restart Claude for Desktop
+### Directory Approval Flow
 
-## MCP Tools
+1. Command is requested in a directory
+2. System checks:
+   - Is the directory in the global whitelist? → **Allow**
+   - Has directory been approved in this session? → **Allow**
+   - Neither? → **Request approval**
+3. After approval, directory remains approved for the entire session
 
-This server provides the following MCP tools to AI assistants:
+### Path Format Support
 
-1. `execute_command`: Execute any supported command (requires approval for write/system commands)
-2. `execute_read_command`: Execute read-only commands (no approval required)
-3. `list_available_commands`: List all available commands by category
-4. `approve_command_type`: Grant approval for a command type (write or system) for the current session
-5. `get_command_help`: Get detailed help about command capabilities and examples
-6. `get_configuration`: Get the current configuration settings
+- Absolute paths: `/home/user/documents`
+- Home directory: `~` (expands to user's home)
+- User subdirectories: `~/Downloads`
 
-### Configuration Tool Details
+### Claude Desktop Integration
 
-#### get_configuration
+The server maintains a persistent session for Claude Desktop, ensuring directory approvals persist between requests and preventing approval loops.
 
-This tool retrieves the current configuration settings, including:
-- Server settings (name, version, log level)
-- Security settings (session timeout, command separator control)
-- Command list statistics
-- Output settings
-- Separator support status
+## Command Customization
 
-Example usage:
-```python
-config = await get_configuration()
-print(f"Command separator support: {config['separator_support']}")
-```
+The system uses command categorization to control access:
 
+| Category | Description | Example Commands | Requires Approval |
+|----------|-------------|------------------|-------------------|
+| Read | Safe operations | ls, cat, find | No |
+| Write | Data modification | mkdir, rm, touch | Yes |
+| System | System operations | ps, ping, ifconfig | Yes |
+| Blocked | Dangerous commands | sudo, bash, eval | Always denied |
 
-## Customizing Command Lists
-
-You can customize the list of allowed, blocked, and categorized commands using either the configuration file or environment variable overrides.
-
-### Using JSON Configuration
-
-To customize commands in the JSON configuration file:
+### Customization Methods
 
 ```json
+// In config.json
 {
   "commands": {
-    "read": [
-      "ls", "pwd", "cat", "less", "head", "tail", "grep",
-      "wc", "nl", "column", "jq" 
-    ],
-    "system": [
-      "ps", "top", "htop", "who", "netstat", "ifconfig", "ping",
-      "kubectl", "docker", "aws", "gcloud"
-    ],
-    "blocked": [
-      "sudo", "su", "bash", "sh", "zsh", "ksh", "csh", "fish",
-      "npm", "pip", "apt", "apt-get", "yum", "brew"
-    ]
+    "read": ["ls", "cat", "grep", "awk", "jq"],
+    "write": ["mkdir", "touch", "rm"],
+    "system": ["ping", "ifconfig", "kubectl"],
+    "blocked": ["sudo", "bash", "eval"]
   }
 }
 ```
 
-### Using Environment Variables for Additions
-
-Environment variables will merge with (not replace) existing command lists. This allows you to add additional commands without losing the defaults:
-
+**Environment Variable Method:**
 ```bash
-# Add awk and jq to the read commands list (they'll be merged with existing commands)
+# Add to existing lists, not replace (comma-separated)
 export CMD_LINE_MCP_COMMANDS_READ="awk,jq"
-
-# Add container tools to the system commands list
-export CMD_LINE_MCP_COMMANDS_SYSTEM="kubectl,docker,aws"
-
-# Add package managers to the blocked commands list
-export CMD_LINE_MCP_COMMANDS_BLOCKED="npm,pip,apt-get"
+export CMD_LINE_MCP_COMMANDS_BLOCKED="npm,pip"
 ```
 
-When using these commands in pipelines, they'll be properly recognized:
+The MCP server merges these additions with existing commands, letting you extend functionality without recreating complete command lists.
 
-```bash
-# Now this will work because awk has been added to allowed commands
-ls -la | awk '{print $1}'
+### Command Chaining
 
-# And cloud/container commands will work too
-kubectl get pods | grep "Running"
-```
+The server supports three command chaining methods:
 
-Or in a `.env` file:
-```
-# Add text processing tools to the read commands
-CMD_LINE_MCP_COMMANDS_READ=awk,sed,jq
+| Method | Symbol | Example | Config Setting |
+|--------|--------|---------|---------------|
+| Pipes | `\|` | `ls \| grep txt` | `allow_command_separators: true` |
+| Sequence | `;` | `mkdir dir; cd dir` | `allow_command_separators: true` |
+| Background | `&` | `find . -name "*.log" &` | `allow_command_separators: true` |
 
-# Add package managers to the blocked commands
-CMD_LINE_MCP_COMMANDS_BLOCKED=npm,pip,apt-get
-```
+All commands in a chain must be from the supported command list. Security checks apply to the entire chain.
 
-Example: Using in Claude Desktop config for command-line tool access:
-```json
-{
-  "mcpServers": {
-    "cmd-line": {
-      "command": "/path/to/venv/bin/cmd-line-mcp",
-      "args": ["--config", "/path/to/config.json"],
-      "env": {
-        "CMD_LINE_MCP_COMMANDS_READ": "awk,sed,jq",
-        "CMD_LINE_MCP_SERVER_LOG_LEVEL": "DEBUG"
-      }
-    }
-  }
-}
-```
-
-This flexibility allows you to:
-- Add custom commands to the appropriate category
-- Block additional commands
-- Add new dangerous patterns to match against
-- Change security settings like session timeouts
-- Enable or disable command separator support (pipes, semicolons, ampersands)
-- Configure Claude Desktop compatibility settings
-
-### Command Chaining Support
-
-This server supports multiple ways to chain commands, all of which can be individually enabled or disabled in the configuration:
-
-- **Pipes (`|`)**: Connect the output of one command to the input of another
-  - Example: `du -h ~/Downloads/* | grep G | sort -hr | head -10`
-- **Semicolons (`;`)**: Run multiple commands in sequence
-  - Example: `mkdir test; cd test; touch file.txt`
-- **Ampersands (`&`)**: Run commands in the background
-  - Example: `find /large/directory -name "*.log" &`
-
-All commands in a chain must be from the supported command list.
-
-You can configure command separator support in several ways:
-
-1. Using the config file:
+**Quick Configuration:**
 ```json
 "security": {
-  "allow_command_separators": true
+  "allow_command_separators": true  // Set to false to disable all chaining
 }
 ```
 
-2. Using environment variables for quick overrides:
-```bash
-# Start with the base configuration file, but override a single setting
-export CMD_LINE_MCP_SECURITY_ALLOW_COMMAND_SEPARATORS=false
-cmd-line-mcp --config /path/to/config.json
-```
-
-3. Using the update_configuration tool at runtime:
-```python
-update_json = '{"security": {"allow_command_separators": false}}'
-await update_configuration(config_updates=update_json)
-```
-
-You can also add specific separators to the `dangerous_patterns` list to block them individually.
+To disable specific separators, add them to the `dangerous_patterns` list.
 
 ## License
 
