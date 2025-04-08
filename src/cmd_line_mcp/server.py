@@ -79,7 +79,7 @@ class CommandLineMCP:
         server_config = self.config.get_section("server")
         self.app = FastMCP(
             server_config.get("name", "cmd-line-mcp"),
-            version=server_config.get("version", "0.2.0"),
+            version=server_config.get("version", "0.3.0"),
             description=server_config.get(
                 "description",
                 "MCP server for safely executing command-line tools",

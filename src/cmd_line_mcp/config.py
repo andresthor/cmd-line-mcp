@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_CONFIG = {
     "server": {
         "name": "cmd-line-mcp",
-        "version": "0.2.0",
+        "version": "0.3.0",
         "description": "MCP server for safely executing command-line tools",
         "log_level": "INFO",
     },
