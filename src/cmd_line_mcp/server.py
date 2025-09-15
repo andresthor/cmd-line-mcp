@@ -76,13 +76,16 @@ class CommandLineMCP:
 
         # Initialize MCP app
         server_config = self.config.get_section("server")
+        version = server_config.get("version", "0.4.0")
+        description = server_config.get(
+            "description",
+            "MCP server for safely executing command-line tools",
+        )
+        instructions = f"{description} (v{version})"
+
         self.app = FastMCP(
             server_config.get("name", "cmd-line-mcp"),
-            version=server_config.get("version", "0.4.0"),
-            description=server_config.get(
-                "description",
-                "MCP server for safely executing command-line tools",
-            ),
+            instructions=instructions,
         )
 
         # Store capabilities data to use in get_command_help tool
