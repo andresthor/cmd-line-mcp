@@ -1,6 +1,5 @@
 """Tests for the security module."""
 
-import pytest
 from cmd_line_mcp.security import validate_command, parse_command
 
 

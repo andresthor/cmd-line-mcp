@@ -1,7 +1,6 @@
 """Tests for the session management module."""
 
 import time
-import pytest
 from cmd_line_mcp.session import SessionManager
 
 

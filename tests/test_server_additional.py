@@ -1,15 +1,10 @@
 """Additional tests for the server module to improve coverage."""
 
-import asyncio
-import os
 import pytest
 import uuid
-import re
-from unittest.mock import patch, MagicMock, AsyncMock
-from cmd_line_mcp.security import validate_command
+from unittest.mock import patch, AsyncMock
 
-from cmd_line_mcp.server import CommandLineMCP, main
-from cmd_line_mcp.config import Config
+from cmd_line_mcp.server import CommandLineMCP
 
 
 @pytest.fixture
