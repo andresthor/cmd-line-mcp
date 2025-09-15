@@ -4,40 +4,36 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cmd-line-mcp"
-version = "0.5.0"
+version = "0.5.1"
 description = "Command-line MCP server for safe command execution"
 readme = "README.md"
-authors = [
-    {name = "Your Name", email = "your.email@example.com"}
-]
-license = {text = "MIT"}
+authors = [{ name = "Your Name", email = "andresthor@gmail.com" }]
+license = { text = "MIT" }
 classifiers = [
-    "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
-    "License :: OSI Approved :: MIT License",
-    "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
 ]
 requires-python = ">=3.9"
-dependencies = [
-    "mcp>=1.6.0",
-]
+dependencies = ["mcp>=1.6.0"]
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=7.0.0",
-    "pytest-asyncio>=0.18.0",
-    "flake8>=4.0.0",
-    "black>=22.0.0",
+  "pytest>=7.0.0",
+  "pytest-asyncio>=0.18.0",
+  "flake8>=4.0.0",
+  "black>=22.0.0",
 ]
 
 [project.scripts]
 cmd-line-mcp = "cmd_line_mcp.server:main"
 
 [tool.setuptools]
-package-dir = {"" = "src"}
+package-dir = { "" = "src" }
 packages = ["cmd_line_mcp"]
 include-package-data = true
 

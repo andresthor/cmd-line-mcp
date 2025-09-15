@@ -43,7 +43,7 @@ def test_config_from_file():
         test_config = {
             "server": {
                 "name": "test-server",
-                "version": "0.0.4",
+                "version": "0.0.6",
                 "log_level": "DEBUG",
             },
             "commands": {
@@ -70,7 +70,7 @@ def test_config_from_file():
 
         # Test that values were loaded correctly
         assert config.get("server", "name") == "test-server"
-        assert config.get("server", "version") == "0.0.4"
+        assert config.get("server", "version") == "0.0.6"
         assert config.get("server", "log_level") == "DEBUG"
         assert config.get("commands", "read") == ["test-read"]
         assert config.get("security", "session_timeout") == 1800

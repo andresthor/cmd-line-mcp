@@ -1,8 +1,6 @@
 """Tests for the directory permission system."""
 
-import os
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 from cmd_line_mcp.security import (
     normalize_path,

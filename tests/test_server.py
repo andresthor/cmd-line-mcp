@@ -5,7 +5,6 @@ The API for accessing tools and executing them has changed significantly.
 """
 
 import pytest
-from unittest.mock import patch, AsyncMock
 from cmd_line_mcp.server import CommandLineMCP
 from cmd_line_mcp.security import validate_command
 
