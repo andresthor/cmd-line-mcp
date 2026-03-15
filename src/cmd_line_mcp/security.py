@@ -411,9 +411,13 @@ def is_directory_whitelisted(directory: str, whitelisted_dirs: List[str]) -> boo
 
             # Handle wildcard paths
             if "*" in whitelist_dir:
-                # Convert glob pattern to regex pattern
-                pattern = whitelist_dir.replace("*", ".*")
-                if re.match(pattern, normalized_dir):
+                # Build pattern from the already-normalized whitelist entry so
+                # that symlinks (e.g. /tmp -> /private/tmp on macOS) are resolved
+                # consistently.  Escape regex metacharacters (e.g. literal dots
+                # in directory names) before restoring * as .* and use
+                # fullmatch so the pattern must cover the entire path.
+                escaped = re.escape(normalized_whitelist).replace(r"\*", ".*")
+                if re.fullmatch(escaped, normalized_dir):
                     return True
 
         return False

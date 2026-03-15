@@ -55,7 +55,14 @@
       "2>&1",
       "\\$\\(",
       "\\$\\{\\w+\\}",
-      "`"
+      "`",
+      "system\\s*\\(",
+      "s/[^/]*/[^/]*/[a-zA-Z0-9]*e",
+      "-exec\\s+(sh|bash|zsh|ksh|csh|fish|python[23]?|perl|ruby|node|env)\\b",
+      "\\benv\\s+(sh|bash|zsh|ksh|csh|fish|python[23]?|perl|ruby|node)\\b",
+      "\\bxargs\\s+(sh|bash|zsh|ksh|csh|fish|python[23]?|perl|ruby|node|env)\\b",
+      "--to-command",
+      "--checkpoint-action=exec"
     ]
   },
   "output": {
