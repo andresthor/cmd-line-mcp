@@ -40,3 +40,4 @@ site/
 .python-version
 .env.local
 .venv
+uv.lock
