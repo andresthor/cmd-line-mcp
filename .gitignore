@@ -39,3 +39,4 @@ site/
 # Local development
 .python-version
 .env.local
+.venv
