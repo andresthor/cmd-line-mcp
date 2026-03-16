@@ -470,3 +470,65 @@ def test_tar_use_compress_program_quoted(default_cmd_lists):
 def test_tar_dash_I_interpreter(default_cmd_lists):
     """tar -I (short for --use-compress-program) must be blocked."""
     _blocked(default_cmd_lists, "tar -I sh -czf /dev/null /tmp")
+
+
+# ---------------------------------------------------------------------------
+# V13 — cp/mv to system-critical paths
+# cp and mv are in write_commands but no pattern blocks writes to
+# sensitive destinations like /etc, /boot, /bin, /sbin, /usr/bin, etc.
+# ---------------------------------------------------------------------------
+
+
+def test_cp_to_etc_passwd(default_cmd_lists):
+    """cp to /etc/ must be blocked."""
+    _blocked(default_cmd_lists, "cp /tmp/evil /etc/passwd")
+
+
+def test_cp_to_boot(default_cmd_lists):
+    """cp to /boot/ must be blocked."""
+    _blocked(default_cmd_lists, "cp /tmp/evil /boot/vmlinuz")
+
+
+def test_mv_to_usr_local_bin(default_cmd_lists):
+    """mv to /usr/local/bin/ must be blocked."""
+    _blocked(default_cmd_lists, "mv /tmp/backdoor /usr/local/bin/ls")
+
+
+def test_mv_to_usr_bin(default_cmd_lists):
+    """mv to /usr/bin/ must be blocked."""
+    _blocked(default_cmd_lists, "mv /tmp/evil /usr/bin/cat")
+
+
+def test_cp_to_sbin(default_cmd_lists):
+    """cp to /sbin/ must be blocked."""
+    _blocked(default_cmd_lists, "cp /tmp/evil /sbin/init")
+
+
+# ---------------------------------------------------------------------------
+# V15 — LD_PRELOAD / LD_LIBRARY_PATH / DYLD_INSERT_LIBRARIES injection
+# export is in write_commands and env is in read_commands, so setting
+# dangerous linker variables passes validation unchecked.
+# ---------------------------------------------------------------------------
+
+
+def test_export_ld_preload(default_cmd_lists):
+    """export LD_PRELOAD must be blocked."""
+    _blocked(default_cmd_lists, "export LD_PRELOAD=/tmp/evil.so")
+
+
+def test_env_ld_preload(default_cmd_lists):
+    """env LD_PRELOAD must be blocked."""
+    _blocked(default_cmd_lists, "env LD_PRELOAD=/tmp/evil.so cat /etc/passwd")
+
+
+def test_env_ld_library_path(default_cmd_lists):
+    """env LD_LIBRARY_PATH must be blocked."""
+    _blocked(default_cmd_lists, "env LD_LIBRARY_PATH=/tmp cat /etc/passwd")
+
+
+def test_env_dyld_insert_libraries(default_cmd_lists):
+    """env DYLD_INSERT_LIBRARIES must be blocked (macOS equivalent)."""
+    _blocked(
+        default_cmd_lists,
+        "env DYLD_INSERT_LIBRARIES=/tmp/evil.dylib cat /etc/hosts",
+    )
