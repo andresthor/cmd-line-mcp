@@ -155,6 +155,31 @@ def test_find_exec_env(default_cmd_lists):
 
 
 # ---------------------------------------------------------------------------
+# V3b — find -exec with full path to interpreter
+# The current -exec pattern only matches bare interpreter names.
+# Full paths like /bin/sh or /usr/bin/python3 bypass the check.
+# ---------------------------------------------------------------------------
+
+
+def test_find_exec_fullpath_sh(default_cmd_lists):
+    """find -exec /bin/sh must be blocked (full path to interpreter)."""
+    _blocked(default_cmd_lists, "find /tmp -exec /bin/sh -c 'id' {} +")
+
+
+def test_find_exec_fullpath_python3(default_cmd_lists):
+    """find -exec /usr/bin/python3 must be blocked (full path)."""
+    _blocked(
+        default_cmd_lists,
+        "find /tmp -exec /usr/bin/python3 -c 'import os' {} +",
+    )
+
+
+def test_find_execdir_fullpath_bash(default_cmd_lists):
+    """find -execdir /usr/bin/bash must be blocked (full path)."""
+    _blocked(default_cmd_lists, "find /tmp -execdir /usr/bin/bash -c 'id' {} +")
+
+
+# ---------------------------------------------------------------------------
 # V4 — env executing arbitrary binaries
 # ---------------------------------------------------------------------------
 
@@ -172,6 +197,21 @@ def test_env_exec_sh(default_cmd_lists):
 def test_env_exec_python(default_cmd_lists):
     """env python3 must be blocked."""
     _blocked(default_cmd_lists, "env python3 -c '__import__(\"os\").system(\"id\")'")
+
+
+def test_env_with_flag_i_sh(default_cmd_lists):
+    """env -i sh must be blocked (flag before interpreter)."""
+    _blocked(default_cmd_lists, "env -i sh -c id")
+
+
+def test_env_with_flag_u_sh(default_cmd_lists):
+    """env -u HOME sh must be blocked (flag before interpreter)."""
+    _blocked(default_cmd_lists, "env -u HOME sh -c id")
+
+
+def test_env_ignore_environment_sh(default_cmd_lists):
+    """env --ignore-environment sh must be blocked."""
+    _blocked(default_cmd_lists, "env --ignore-environment sh")
 
 
 # ---------------------------------------------------------------------------
@@ -200,6 +240,16 @@ def test_xargs_python(default_cmd_lists):
 def test_xargs_env(default_cmd_lists):
     """xargs env (to proxy into a shell) must be blocked."""
     _blocked(default_cmd_lists, "echo bash | xargs env")
+
+
+def test_xargs_with_I_flag_sh(default_cmd_lists):
+    """xargs -I{} sh must be blocked (flag before interpreter)."""
+    _blocked(default_cmd_lists, "echo id | xargs -I{} sh -c")
+
+
+def test_xargs_with_max_args_sh(default_cmd_lists):
+    """xargs --max-args=1 sh must be blocked."""
+    _blocked(default_cmd_lists, "echo x | xargs --max-args=1 sh")
 
 
 # ---------------------------------------------------------------------------
