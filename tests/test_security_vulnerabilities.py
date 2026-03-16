@@ -327,3 +327,146 @@ def test_expect_direct_exec(default_cmd_lists):
 def test_script_direct_exec(default_cmd_lists):
     """script must be explicitly blocked (PTY capture)."""
     _explicitly_blocked(default_cmd_lists, "script -c 'id' /tmp/out")
+
+
+def _blocked_by_pattern(cmd_lists, command):
+    """Assert a command is blocked specifically by a dangerous pattern.
+
+    Some commands are accidentally blocked by side-effects of naive pipe/
+    separator splitting.  This helper ensures the blocking is intentional
+    — via a dangerous_patterns match — rather than coincidental.
+    """
+    result = validate_command(
+        command,
+        cmd_lists["read"],
+        cmd_lists["write"],
+        cmd_lists["system"],
+        cmd_lists["blocked"],
+        cmd_lists["dangerous_patterns"],
+    )
+    assert result["is_valid"] is False, (
+        f"Expected '{command}' to be blocked by a dangerous pattern, "
+        f"but it was allowed (type={result['command_type']})"
+    )
+    assert "dangerous pattern" in (result["error"] or "").lower(), (
+        f"Expected '{command}' to be caught by a dangerous pattern, "
+        f"but got: {result['error']}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# V8 — find -execdir, -ok, -okdir (variants not covered by -exec pattern)
+# The current pattern only matches -exec followed by an interpreter.
+# -execdir, -ok, and -okdir are equally dangerous but bypass the check.
+# Uses + terminator (not \;) to avoid accidental semicolon-split blocking.
+# ---------------------------------------------------------------------------
+
+
+def test_find_execdir_sh(default_cmd_lists):
+    """find -execdir sh must be blocked."""
+    _blocked(default_cmd_lists, "find /tmp -execdir sh -c 'id' {} +")
+
+
+def test_find_execdir_bash(default_cmd_lists):
+    """find -execdir bash must be blocked."""
+    _blocked(default_cmd_lists, "find /tmp -execdir bash -c 'id' {} +")
+
+
+def test_find_execdir_python(default_cmd_lists):
+    """find -execdir python3 must be blocked."""
+    _blocked(default_cmd_lists, "find /tmp -execdir python3 -c 'print(1)' {} +")
+
+
+def test_find_ok_sh(default_cmd_lists):
+    """find -ok sh must be blocked."""
+    _blocked(default_cmd_lists, "find /tmp -ok sh -c 'id' {} +")
+
+
+def test_find_okdir_bash(default_cmd_lists):
+    """find -okdir bash must be blocked."""
+    _blocked(default_cmd_lists, "find /tmp -okdir bash -c 'id' {} +")
+
+
+# ---------------------------------------------------------------------------
+# V10 — sed /e flag with alternative delimiters
+# sed allows any character as the substitution delimiter (not just /).
+# The current pattern s/[^/]*/[^/]*/[a-zA-Z0-9]*e only matches /.
+# ---------------------------------------------------------------------------
+
+
+def test_sed_at_delimiter_e_flag(default_cmd_lists):
+    """sed s@...@...@e must be blocked."""
+    _blocked(default_cmd_lists, "sed 's@.*@id@e'")
+
+
+def test_sed_hash_delimiter_e_flag(default_cmd_lists):
+    """sed s#...#...#e must be blocked."""
+    _blocked(default_cmd_lists, "sed 's#.*#id#e'")
+
+
+def test_sed_bang_delimiter_e_flag(default_cmd_lists):
+    """sed s!...!...!e must be blocked."""
+    _blocked(default_cmd_lists, "sed 's!.*!id!e'")
+
+
+def test_sed_comma_delimiter_e_flag(default_cmd_lists):
+    """sed s,...,...,e must be blocked."""
+    _blocked(default_cmd_lists, "sed 's,.*,id,e'")
+
+
+def test_sed_pipe_delimiter_e_flag(default_cmd_lists):
+    """sed s|...|...|e must be blocked by a dangerous pattern.
+
+    Note: the | inside the sed expression accidentally triggers pipeline
+    splitting, which blocks the command for the wrong reason.  This test
+    verifies the blocking comes from a dangerous pattern instead.
+    """
+    _blocked_by_pattern(default_cmd_lists, "sed 's|.*|id|e'")
+
+
+def test_sed_at_delimiter_ge_flags(default_cmd_lists):
+    """sed s@...@...@ge (global + exec) must be blocked."""
+    _blocked(default_cmd_lists, "sed 's@.*@id@ge'")
+
+
+# ---------------------------------------------------------------------------
+# V11 — awk coprocess via |& operator
+# The |& operator opens a bidirectional pipe in awk/gawk, allowing
+# arbitrary command execution.  Currently blocked only as a side-effect
+# of naive pipeline splitting on the | character.
+# ---------------------------------------------------------------------------
+
+
+def test_awk_coprocess_getline(default_cmd_lists):
+    """awk |& getline (coprocess) must be blocked by a dangerous pattern."""
+    _blocked_by_pattern(
+        default_cmd_lists, "awk 'BEGIN { \"id\" |& getline result }'"
+    )
+
+
+# ---------------------------------------------------------------------------
+# V12 — tar --use-compress-program and -I flag
+# These flags accept an arbitrary command for (de)compression.
+# Current patterns only cover --checkpoint-action and --to-command.
+# ---------------------------------------------------------------------------
+
+
+def test_tar_use_compress_program(default_cmd_lists):
+    """tar --use-compress-program must be blocked."""
+    _blocked(
+        default_cmd_lists,
+        "tar --use-compress-program=sh -czf /dev/null /tmp",
+    )
+
+
+def test_tar_use_compress_program_quoted(default_cmd_lists):
+    """tar --use-compress-program with quoted command must be blocked."""
+    _blocked(
+        default_cmd_lists,
+        "tar --use-compress-program='sh -c id' -czf /dev/null /tmp",
+    )
+
+
+def test_tar_dash_I_interpreter(default_cmd_lists):
+    """tar -I (short for --use-compress-program) must be blocked."""
+    _blocked(default_cmd_lists, "tar -I sh -czf /dev/null /tmp")
