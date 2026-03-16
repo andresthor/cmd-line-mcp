@@ -76,7 +76,7 @@ class CommandLineMCP:
 
         # Initialize MCP app
         server_config = self.config.get_section("server")
-        version = server_config.get("version", "0.5.1")
+        version = server_config.get("version", "0.6.0")
         description = server_config.get(
             "description",
             "MCP server for safely executing command-line tools",

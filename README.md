@@ -55,6 +55,25 @@ The system implements a multi-layered security approach:
 
 All security features can be configured from restrictive to permissive based on your threat model and convenience requirements.
 
+### Command Execution Hardening
+
+Powerful utilities like `awk`, `sed`, `find`, `tar`, `env`, and `xargs` can be abused to execute arbitrary commands even when shells are blocked. The server detects and blocks these vectors:
+
+| Attack Vector | Example | Defense |
+|---|---|---|
+| awk `system()` / getline | `awk 'BEGIN{system("id")}'` | Dangerous pattern match |
+| sed `/e` execute flag | `sed 's/x/id/e'` (any delimiter) | Delimiter-aware regex |
+| find `-exec` with interpreters | `find -exec sh -c 'id' {} +` | Blocks bare and full-path interpreters |
+| env launching interpreters | `env -i sh -c id` | Flag-aware pattern match |
+| xargs launching interpreters | `xargs -I{} sh -c id` | Flag-aware pattern match |
+| tar command execution | `tar --checkpoint-action=exec=id` | Blocks `--to-command`, `-I`, `--use-compress-program` |
+| cp/mv to system paths | `cp evil /etc/passwd` | Blocks writes to `/etc`, `/boot`, `/bin`, `/sbin`, `/usr/*bin` |
+| Linker variable injection | `env LD_PRELOAD=evil.so cmd` | Blocks `LD_PRELOAD`, `LD_LIBRARY_PATH`, `DYLD_INSERT_LIBRARIES` |
+| Direct interpreter invocation | `python3 -c '...'` | Shells and scripting languages explicitly blocked |
+| Command substitution | `$(id)`, `` `id` `` | Blocked by pattern |
+
+All interpreters (sh, bash, zsh, python, perl, ruby, node, lua, php, etc.) are explicitly blocked, not just absent from allowlists. Custom patterns can be added via the `dangerous_patterns` configuration.
+
 ## Quick Start
 
 ```bash
