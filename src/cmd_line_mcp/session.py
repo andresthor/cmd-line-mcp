@@ -1,8 +1,7 @@
 """Session management for the command-line MCP server."""
 
-import time
 import os
-from typing import Dict, Any, Set
+import time
 
 
 class SessionManager:
@@ -10,9 +9,9 @@ class SessionManager:
 
     def __init__(self):
         """Initialize the session manager."""
-        self.sessions: Dict[str, Dict[str, Any]] = {}
+        self.sessions: dict[str, dict[str, object]] = {}
 
-    def get_session(self, session_id: str) -> Dict[str, Any]:
+    def get_session(self, session_id: str) -> dict[str, object]:
         """Get a session by ID, creating it if it doesn't exist.
 
         Args:
@@ -115,7 +114,7 @@ class SessionManager:
         session = self.get_session(session_id)
         session["approved_directories"].add(directory)
 
-    def get_approved_directories(self, session_id: str) -> Set[str]:
+    def get_approved_directories(self, session_id: str) -> set[str]:
         """Get all approved directories for a session.
 
         Args:

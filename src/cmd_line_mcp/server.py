@@ -6,7 +6,7 @@ import argparse
 import asyncio
 import logging
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
@@ -32,8 +32,8 @@ class CommandLineMCP:
 
     def __init__(
         self,
-        config_path: Optional[str] = None,
-        env_file_path: Optional[str] = None,
+        config_path: str | None = None,
+        env_file_path: str | None = None,
     ):
         """Initialize the MCP server.
 
@@ -76,7 +76,7 @@ class CommandLineMCP:
 
         # Initialize MCP app
         server_config = self.config.get_section("server")
-        version = server_config.get("version", "0.5.1")
+        version = server_config.get("version", "0.6.0")
         description = server_config.get(
             "description",
             "MCP server for safely executing command-line tools",
@@ -150,8 +150,8 @@ class CommandLineMCP:
 
         @execute_command_tool  # Keep decorator reference to satisfy linters
         async def execute_command(
-            command: str, session_id: Optional[str] = None
-        ) -> Dict[str, Any]:
+            command: str, session_id: str | None = None
+        ) -> dict[str, Any]:
             """
             Execute a Unix/macOS terminal command.
 
@@ -179,8 +179,8 @@ class CommandLineMCP:
 
         @execute_read_command_tool  # Keep decorator reference to satisfy linters
         async def execute_read_command(
-            command: str, session_id: Optional[str] = None
-        ) -> Dict[str, Any]:
+            command: str, session_id: str | None = None
+        ) -> dict[str, Any]:
             """
             Execute a read-only Unix/macOS terminal command (ls, cat, grep, etc.).
 
@@ -378,7 +378,7 @@ class CommandLineMCP:
         list_available_commands_tool = self.app.tool()
 
         @list_available_commands_tool  # Keep decorator reference to satisfy linters
-        async def list_available_commands() -> Dict[str, List[str]]:
+        async def list_available_commands() -> dict[str, list[str]]:
             """
             List all available commands by category.
 
@@ -401,7 +401,7 @@ class CommandLineMCP:
         get_command_help_tool = self.app.tool()
 
         @get_command_help_tool  # Keep decorator reference to satisfy linters
-        async def get_command_help() -> Dict[str, Any]:
+        async def get_command_help() -> dict[str, Any]:
             """
             Get detailed help about command capabilities and usage.
 
@@ -486,7 +486,7 @@ class CommandLineMCP:
         @approve_command_type_tool  # Keep decorator reference to satisfy linters
         async def approve_command_type(
             command_type: str, session_id: str, remember: bool = False
-        ) -> Dict[str, Any]:
+        ) -> dict[str, Any]:
             """
             Approve a command type for the current session.
 
@@ -525,7 +525,7 @@ class CommandLineMCP:
         @approve_directory_tool  # Keep decorator reference to satisfy linters
         async def approve_directory(
             directory: str, session_id: str, remember: bool = True
-        ) -> Dict[str, Any]:
+        ) -> dict[str, Any]:
             """
             Approve access to a directory for the current session.
 
@@ -578,7 +578,7 @@ class CommandLineMCP:
         list_directories_tool = self.app.tool()
 
         @list_directories_tool  # Keep decorator reference to satisfy linters
-        async def list_directories(session_id: Optional[str] = None) -> Dict[str, Any]:
+        async def list_directories(session_id: str | None = None) -> dict[str, Any]:
             """
             List all whitelisted and approved directories.
 
@@ -607,7 +607,7 @@ class CommandLineMCP:
         get_configuration_tool = self.app.tool()
 
         @get_configuration_tool  # Keep decorator reference to satisfy linters
-        async def get_configuration() -> Dict[str, Any]:
+        async def get_configuration() -> dict[str, Any]:
             """
             Get the current configuration settings.
 
@@ -648,9 +648,9 @@ class CommandLineMCP:
     async def _execute_command(
         self,
         command: str,
-        command_type: Optional[str] = None,
-        session_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        command_type: str | None = None,
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
         """Execute a Unix/macOS terminal command.
 
         Args:

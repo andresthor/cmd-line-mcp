@@ -1,7 +1,7 @@
 {
   "server": {
     "name": "cmd-line-mcp",
-    "version": "0.5.1",
+    "version": "0.6.0",
     "description": "MCP server for safely executing command-line tools",
     "log_level": "INFO"
   },
@@ -39,7 +39,12 @@
       "screen", "tmux", "nc", "telnet", "nmap",
       "dd", "mkfs", "mount", "umount", "shutdown", "reboot",
       "passwd", "chpasswd", "useradd", "userdel", "groupadd", "groupdel",
-      "eval", "exec", "source", "."
+      "eval", "exec", "source", ".",
+      "python", "python2", "python3",
+      "perl", "ruby", "node", "nodejs",
+      "lua", "php",
+      "tclsh", "wish", "Rscript",
+      "expect", "script"
     ],
     "dangerous_patterns": [
       "rm\\s+-rf\\s+/",
@@ -55,7 +60,19 @@
       "2>&1",
       "\\$\\(",
       "\\$\\{\\w+\\}",
-      "`"
+      "`",
+      "system\\s*\\(",
+      "\\bs([/|@#!%,])[^'\"]*?\\1[^'\"]*?\\1[a-zA-Z]*e",
+      "-(exec|execdir|ok|okdir)\\s+(\\S+/)?(sh|bash|zsh|ksh|csh|fish|python[23]?|perl|ruby|node|env)\\b",
+      "\\benv\\s+(.*\\s)?(sh|bash|zsh|ksh|csh|fish|python[23]?|perl|ruby|node)\\b",
+      "\\bxargs\\s+(.*\\s)?(sh|bash|zsh|ksh|csh|fish|python[23]?|perl|ruby|node|env)\\b",
+      "\\|&",
+      "--to-command",
+      "--checkpoint-action=exec",
+      "--use-compress-program",
+      "\\btar\\b.*\\s-I\\s",
+      "\\b(cp|mv)\\b.*(/etc/|/boot/|/bin/|/sbin/|/usr/(local/)?s?bin/)",
+      "\\b(LD_PRELOAD|LD_LIBRARY_PATH|DYLD_INSERT_LIBRARIES)="
     ]
   },
   "output": {

@@ -4,13 +4,13 @@ import logging
 import os
 import re
 import shlex
-from typing import Dict, List, Optional, Tuple, Union
+from pathlib import Path
 
 # Configure logger
 logger = logging.getLogger(__name__)
 
 
-def parse_command(command: str) -> Tuple[str, List[str]]:
+def parse_command(command: str) -> tuple[str, list[str]]:
     """Parse a command string into command and arguments.
 
     Args:
@@ -19,37 +19,31 @@ def parse_command(command: str) -> Tuple[str, List[str]]:
     Returns:
         A tuple of (command, arguments)
     """
-    # Handle the case where a pipe segment might not start with a command
-    # For example: `-v` is a flag, not a command in `cmd | -v`
     command = command.strip()
 
-    # If it starts with a dash, it's probably a flag/option continuation
     if command.startswith("-"):
         return "", [command]
 
     try:
         parts = shlex.split(command)
-        if not parts:
-            return "", []
-        return parts[0], parts[1:]
     except ValueError:
-        # If shlex.split fails (e.g., on unbalanced quotes),
-        # fall back to a simpler split
+        # shlex.split fails on unbalanced quotes; fall back to simple split
         parts = command.strip().split()
-        if not parts:
-            return "", []
-        return parts[0], parts[1:]
+
+    if not parts:
+        return "", []
+    return parts[0], parts[1:]
 
 
 def validate_command(
     command: str,
-    read_commands: List[str],
-    write_commands: List[str],
-    system_commands: List[str],
-    blocked_commands: List[str],
-    dangerous_patterns: List[str],
+    read_commands: list[str],
+    write_commands: list[str],
+    system_commands: list[str],
+    blocked_commands: list[str],
+    dangerous_patterns: list[str],
     allow_command_separators: bool = True,
-) -> Dict[str, Union[bool, str, Optional[str]]]:
+) -> dict[str, bool | str | None]:
     """Validate a command for security.
 
     Args:
@@ -224,24 +218,11 @@ def normalize_path(path: str) -> str:
     Returns:
         Normalized absolute path
     """
-    # Expand user directory for paths that start with ~
-    if path.startswith("~"):
-        path = os.path.expanduser(path)
-
-    # Convert to absolute path
-    abs_path = os.path.abspath(path)
-    # Normalize to resolve '..' and '.' components
-    norm_path = os.path.normpath(abs_path)
-    # Try to resolve any symlinks if possible
-    try:
-        real_path = os.path.realpath(norm_path)
-        return real_path
-    except (OSError, IOError):
-        # Fall back to normalized path if realpath fails
-        return norm_path
+    p = Path(path).expanduser().resolve()
+    return str(p)
 
 
-def extract_directory_from_command(command: str) -> Optional[str]:
+def extract_directory_from_command(command: str) -> str | None:
     """Extract the working directory from a command.
 
     Args:
@@ -379,7 +360,7 @@ def extract_directory_from_command(command: str) -> Optional[str]:
         return os.getcwd()
 
 
-def is_directory_whitelisted(directory: str, whitelisted_dirs: List[str]) -> bool:
+def is_directory_whitelisted(directory: str, whitelisted_dirs: list[str]) -> bool:
     """Check if a directory is whitelisted or is a subdirectory of a whitelisted directory.
 
     Args:
@@ -411,9 +392,13 @@ def is_directory_whitelisted(directory: str, whitelisted_dirs: List[str]) -> boo
 
             # Handle wildcard paths
             if "*" in whitelist_dir:
-                # Convert glob pattern to regex pattern
-                pattern = whitelist_dir.replace("*", ".*")
-                if re.match(pattern, normalized_dir):
+                # Build pattern from the already-normalized whitelist entry so
+                # that symlinks (e.g. /tmp -> /private/tmp on macOS) are resolved
+                # consistently.  Escape regex metacharacters (e.g. literal dots
+                # in directory names) before restoring * as .* and use
+                # fullmatch so the pattern must cover the entire path.
+                escaped = re.escape(normalized_whitelist).replace(r"\*", ".*")
+                if re.fullmatch(escaped, normalized_dir):
                     return True
 
         return False

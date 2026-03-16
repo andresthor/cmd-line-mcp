@@ -3,9 +3,8 @@
 import logging
 import os
 import json
-from importlib.resources import files
-from typing import Dict, Optional, Any, List
 from pathlib import Path
+from typing import Any
 
 # Configure logger
 logger = logging.getLogger(__name__)
@@ -16,8 +15,8 @@ class Config:
 
     def __init__(
         self,
-        config_path: Optional[str] = None,
-        env_file_path: Optional[str] = None,
+        config_path: str | None = None,
+        env_file_path: str | None = None,
     ):
         """Initialize the configuration.
 
@@ -79,7 +78,7 @@ class Config:
             # Look in the root directory (3 levels up from this file)
             root_config_path = Path(__file__).parent.parent.parent / "default_config.json"
             if root_config_path.exists():
-                with open(root_config_path, "r") as f:
+                with open(root_config_path, encoding="utf-8") as f:
                     self.config = json.load(f)
                     logger.info(f"Loaded default configuration from {root_config_path}")
                     return
@@ -87,7 +86,7 @@ class Config:
             # If not found in the root directory, check current working directory
             cwd_config_path = Path.cwd() / "default_config.json"
             if cwd_config_path.exists():
-                with open(cwd_config_path, "r") as f:
+                with open(cwd_config_path, encoding="utf-8") as f:
                     self.config = json.load(f)
                     msg = "Loaded default configuration from current directory"
                     logger.info(f"{msg}: {cwd_config_path}")
@@ -119,7 +118,7 @@ class Config:
             config_path: Path to the configuration file
         """
         try:
-            with open(config_path, "r") as f:
+            with open(config_path, encoding="utf-8") as f:
                 loaded_config = json.load(f)
 
             # Merge loaded config with default config
@@ -127,7 +126,7 @@ class Config:
         except Exception as e:
             logger.error(f"Error loading configuration from {config_path}: {str(e)}")
 
-    def _update_config_recursively(self, target: Dict, source: Dict) -> None:
+    def _update_config_recursively(self, target: dict, source: dict) -> None:
         """Recursively update configuration dictionary.
 
         Args:
@@ -151,7 +150,7 @@ class Config:
             env_file_path: Path to the .env file
         """
         try:
-            with open(env_file_path, "r") as f:
+            with open(env_file_path, encoding="utf-8") as f:
                 for line in f:
                     line = line.strip()
                     if not line or line.startswith("#"):
@@ -292,7 +291,7 @@ class Config:
             return value
         return default
 
-    def get_section(self, section: str) -> Dict[str, Any]:
+    def get_section(self, section: str) -> dict[str, Any]:
         """Get a configuration section.
 
         Args:
@@ -303,7 +302,7 @@ class Config:
         """
         return self.config.get(section, {})
 
-    def get_all(self) -> Dict[str, Any]:
+    def get_all(self) -> dict[str, Any]:
         """Get the entire configuration.
 
         Returns:
@@ -311,7 +310,7 @@ class Config:
         """
         return self.config
 
-    def update(self, updates: Dict[str, Any], save: bool = False) -> None:
+    def update(self, updates: dict[str, Any], save: bool = False) -> None:
         """Update the configuration.
 
         Args:
@@ -326,14 +325,14 @@ class Config:
         # Save to file if requested
         if save and self._config_path:
             try:
-                with open(self._config_path, "w") as f:
+                with open(self._config_path, "w", encoding="utf-8") as f:
                     json.dump(self.config, f, indent=2)
             except Exception as e:
                 logger.error(
                     f"Error saving configuration to {self._config_path}: {str(e)}"
                 )
 
-    def get_effective_command_lists(self) -> Dict[str, List[str]]:
+    def get_effective_command_lists(self) -> dict[str, list[str]]:
         """Get the effective command lists taking into account all configuration.
 
         Returns:
@@ -347,7 +346,7 @@ class Config:
             "dangerous_patterns": self.config["commands"]["dangerous_patterns"],
         }
 
-    def has_separator_support(self) -> Dict[str, bool]:
+    def has_separator_support(self) -> dict[str, bool]:
         """Get support status for command separators.
 
         Returns:
