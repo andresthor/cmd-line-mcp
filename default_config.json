@@ -70,7 +70,9 @@
       "--to-command",
       "--checkpoint-action=exec",
       "--use-compress-program",
-      "\\btar\\b.*\\s-I\\s"
+      "\\btar\\b.*\\s-I\\s",
+      "\\b(cp|mv)\\b.*(/etc/|/boot/|/bin/|/sbin/|/usr/(local/)?s?bin/)",
+      "\\b(LD_PRELOAD|LD_LIBRARY_PATH|DYLD_INSERT_LIBRARIES)="
     ]
   },
   "output": {
