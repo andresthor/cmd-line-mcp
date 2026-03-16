@@ -281,9 +281,7 @@ def test_glob_whitelist_no_partial_match():
 
 def test_python3_direct_exec(default_cmd_lists):
     """python3 must be explicitly blocked."""
-    _explicitly_blocked(
-        default_cmd_lists, "python3 -c '__import__(\"os\").system(\"id\")'"
-    )
+    _explicitly_blocked(default_cmd_lists, "python3 -c 'print(1)'")
 
 
 def test_python3_module_exec(default_cmd_lists):
@@ -293,35 +291,32 @@ def test_python3_module_exec(default_cmd_lists):
 
 def test_python_direct_exec(default_cmd_lists):
     """python must be explicitly blocked."""
-    _explicitly_blocked(default_cmd_lists, "python -c 'import os; os.system(\"id\")'")
+    _explicitly_blocked(default_cmd_lists, "python -c 'print(1)'")
 
 
 def test_perl_direct_exec(default_cmd_lists):
     """perl must be explicitly blocked."""
-    _explicitly_blocked(default_cmd_lists, "perl -e 'system(\"id\")'")
+    _explicitly_blocked(default_cmd_lists, "perl -e 'print 1'")
 
 
 def test_ruby_direct_exec(default_cmd_lists):
     """ruby must be explicitly blocked."""
-    _explicitly_blocked(default_cmd_lists, "ruby -e 'system(\"id\")'")
+    _explicitly_blocked(default_cmd_lists, "ruby -e 'puts 1'")
 
 
 def test_node_direct_exec(default_cmd_lists):
     """node must be explicitly blocked."""
-    _explicitly_blocked(
-        default_cmd_lists,
-        "node -e 'require(\"child_process\").execSync(\"id\")'",
-    )
+    _explicitly_blocked(default_cmd_lists, "node -e 'console.log(1)'")
 
 
 def test_lua_direct_exec(default_cmd_lists):
     """lua must be explicitly blocked."""
-    _explicitly_blocked(default_cmd_lists, "lua -e 'os.execute(\"id\")'")
+    _explicitly_blocked(default_cmd_lists, "lua -e 'print(1)'")
 
 
 def test_php_direct_exec(default_cmd_lists):
     """php must be explicitly blocked."""
-    _explicitly_blocked(default_cmd_lists, "php -r 'system(\"id\");'")
+    _explicitly_blocked(default_cmd_lists, "php -r 'echo 1;'")
 
 
 def test_expect_direct_exec(default_cmd_lists):

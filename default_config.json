@@ -39,7 +39,12 @@
       "screen", "tmux", "nc", "telnet", "nmap",
       "dd", "mkfs", "mount", "umount", "shutdown", "reboot",
       "passwd", "chpasswd", "useradd", "userdel", "groupadd", "groupdel",
-      "eval", "exec", "source", "."
+      "eval", "exec", "source", ".",
+      "python", "python2", "python3",
+      "perl", "ruby", "node", "nodejs",
+      "lua", "php",
+      "tclsh", "wish", "Rscript",
+      "expect", "script"
     ],
     "dangerous_patterns": [
       "rm\\s+-rf\\s+/",
