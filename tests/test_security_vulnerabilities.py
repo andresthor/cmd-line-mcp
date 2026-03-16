@@ -33,6 +33,32 @@ def _blocked(cmd_lists, command):
     )
 
 
+def _explicitly_blocked(cmd_lists, command):
+    """Assert a command is explicitly blocked (not just 'unsupported').
+
+    Commands that are merely absent from all allowlists get rejected as
+    'not recognized'.  This helper verifies the stronger guarantee: the
+    command must appear in the blocked list and produce a 'blocked for
+    security reasons' error.
+    """
+    result = validate_command(
+        command,
+        cmd_lists["read"],
+        cmd_lists["write"],
+        cmd_lists["system"],
+        cmd_lists["blocked"],
+        cmd_lists["dangerous_patterns"],
+    )
+    assert result["is_valid"] is False, (
+        f"Expected '{command}' to be explicitly blocked, but it was allowed "
+        f"(type={result['command_type']})"
+    )
+    assert "blocked" in (result["error"] or "").lower(), (
+        f"Expected '{command}' to be explicitly blocked, "
+        f"but got: {result['error']}"
+    )
+
+
 # ---------------------------------------------------------------------------
 # V1 — awk sub-execution via system() and getline
 # ---------------------------------------------------------------------------
@@ -243,3 +269,66 @@ def test_glob_whitelist_no_partial_match():
     assert not is_directory_whitelisted("/tmpfiles/x", whitelisted), (
         "/tmp/* should not match /tmpfiles/x"
     )
+
+
+# ---------------------------------------------------------------------------
+# V7 — Direct interpreter invocation
+# Interpreters must be *explicitly* blocked (in blocked_commands), not merely
+# absent from allowlists.  The distinction matters: an absent command could be
+# added to an allowlist by a user, bypassing the safety net entirely.
+# ---------------------------------------------------------------------------
+
+
+def test_python3_direct_exec(default_cmd_lists):
+    """python3 must be explicitly blocked."""
+    _explicitly_blocked(
+        default_cmd_lists, "python3 -c '__import__(\"os\").system(\"id\")'"
+    )
+
+
+def test_python3_module_exec(default_cmd_lists):
+    """python3 -m must be explicitly blocked."""
+    _explicitly_blocked(default_cmd_lists, "python3 -m http.server")
+
+
+def test_python_direct_exec(default_cmd_lists):
+    """python must be explicitly blocked."""
+    _explicitly_blocked(default_cmd_lists, "python -c 'import os; os.system(\"id\")'")
+
+
+def test_perl_direct_exec(default_cmd_lists):
+    """perl must be explicitly blocked."""
+    _explicitly_blocked(default_cmd_lists, "perl -e 'system(\"id\")'")
+
+
+def test_ruby_direct_exec(default_cmd_lists):
+    """ruby must be explicitly blocked."""
+    _explicitly_blocked(default_cmd_lists, "ruby -e 'system(\"id\")'")
+
+
+def test_node_direct_exec(default_cmd_lists):
+    """node must be explicitly blocked."""
+    _explicitly_blocked(
+        default_cmd_lists,
+        "node -e 'require(\"child_process\").execSync(\"id\")'",
+    )
+
+
+def test_lua_direct_exec(default_cmd_lists):
+    """lua must be explicitly blocked."""
+    _explicitly_blocked(default_cmd_lists, "lua -e 'os.execute(\"id\")'")
+
+
+def test_php_direct_exec(default_cmd_lists):
+    """php must be explicitly blocked."""
+    _explicitly_blocked(default_cmd_lists, "php -r 'system(\"id\");'")
+
+
+def test_expect_direct_exec(default_cmd_lists):
+    """expect must be explicitly blocked (PTY hijacking)."""
+    _explicitly_blocked(default_cmd_lists, "expect -c 'spawn sh'")
+
+
+def test_script_direct_exec(default_cmd_lists):
+    """script must be explicitly blocked (PTY capture)."""
+    _explicitly_blocked(default_cmd_lists, "script -c 'id' /tmp/out")
