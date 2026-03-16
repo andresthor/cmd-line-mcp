@@ -62,12 +62,15 @@
       "\\$\\{\\w+\\}",
       "`",
       "system\\s*\\(",
-      "s/[^/]*/[^/]*/[a-zA-Z0-9]*e",
-      "-exec\\s+(sh|bash|zsh|ksh|csh|fish|python[23]?|perl|ruby|node|env)\\b",
+      "\\bs([/|@#!%,])[^'\"]*?\\1[^'\"]*?\\1[a-zA-Z]*e",
+      "-(exec|execdir|ok|okdir)\\s+(sh|bash|zsh|ksh|csh|fish|python[23]?|perl|ruby|node|env)\\b",
       "\\benv\\s+(sh|bash|zsh|ksh|csh|fish|python[23]?|perl|ruby|node)\\b",
       "\\bxargs\\s+(sh|bash|zsh|ksh|csh|fish|python[23]?|perl|ruby|node|env)\\b",
+      "\\|&",
       "--to-command",
-      "--checkpoint-action=exec"
+      "--checkpoint-action=exec",
+      "--use-compress-program",
+      "\\btar\\b.*\\s-I\\s"
     ]
   },
   "output": {
