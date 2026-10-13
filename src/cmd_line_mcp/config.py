@@ -3,6 +3,7 @@
 import logging
 import os
 import json
+from importlib.resources import files
 from pathlib import Path
 from typing import Any
 
@@ -73,26 +74,16 @@ class Config:
         self._load_from_environment_variables()
         
     def _load_default_config(self) -> None:
-        """Load the default configuration from the built-in default_config.json file."""
+        """Load the default configuration bundled with the package."""
         try:
-            # Look in the root directory (3 levels up from this file)
-            root_config_path = Path(__file__).parent.parent.parent / "default_config.json"
-            if root_config_path.exists():
-                with open(root_config_path, encoding="utf-8") as f:
+            resource = files("cmd_line_mcp") / "default_config.json"
+            if resource.is_file():
+                with resource.open(encoding="utf-8") as f:
                     self.config = json.load(f)
-                    logger.info(f"Loaded default configuration from {root_config_path}")
+                    logger.info(f"Loaded default configuration from {resource}")
                     return
-                    
-            # If not found in the root directory, check current working directory
-            cwd_config_path = Path.cwd() / "default_config.json"
-            if cwd_config_path.exists():
-                with open(cwd_config_path, encoding="utf-8") as f:
-                    self.config = json.load(f)
-                    msg = "Loaded default configuration from current directory"
-                    logger.info(f"{msg}: {cwd_config_path}")
-                    return
-                    
-            logger.error("Could not find default_config.json in any location - using empty configuration")
+
+            logger.error("Bundled default_config.json not found - using empty configuration")
             # If we get here, we couldn't find the default config anywhere
             # Initialize with empty structure to prevent errors
             self.config = {

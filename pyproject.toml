@@ -18,7 +18,7 @@ classifiers = [
   "Operating System :: OS Independent",
 ]
 requires-python = ">=3.10"
-dependencies = ["mcp>=1.6.0"]
+dependencies = ["mcp>=1.6.0,<2"]
 
 [project.optional-dependencies]
 dev = [
@@ -36,12 +36,8 @@ package-dir = { "" = "src" }
 packages = ["cmd_line_mcp"]
 include-package-data = true
 
-[tool.setuptools.data-files]
-"." = ["default_config.json"]
-
 [tool.setuptools.package-data]
-examples = ["*.py"]
-# default_config.json is kept in the root directory as the single source of truth
+cmd_line_mcp = ["default_config.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

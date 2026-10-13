@@ -32,7 +32,7 @@ export CMD_LINE_MCP_COMMANDS_BLOCKED="npm,pip"
 
 ### JSON Configuration
 
-Copy `default_config.json` and customize:
+Copy `src/cmd_line_mcp/default_config.json` and customize:
 
 ```json
 {
