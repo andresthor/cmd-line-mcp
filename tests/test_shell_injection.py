@@ -176,7 +176,7 @@ DIFFERENTIAL = [command for command, _ in ACCEPT] + [
     "ls >&2",
     "ls 1>&2",
     "ls > a.txt | grep x",
-    "cat < in.txt | sort > sorted.txt",
+    "cat < in.txt | wc -l > counted.txt",
     "ls ; echo 'x y' >> log.txt ; pwd",
 ]
 

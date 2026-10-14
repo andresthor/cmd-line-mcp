@@ -119,9 +119,9 @@ async def test_timeout_kills_process_group(server):
     server.config.config["security"]["command_timeout"] = 0.2
 
     started = time.monotonic()
-    # sort keeps the pipe open until sleep exits, so this only returns
+    # wc keeps the pipe open until sleep exits, so this only returns
     # early if the whole group is killed.
-    result = await asyncio.wait_for(server._execute_command("sleep 5 | sort"), 10)
+    result = await asyncio.wait_for(server._execute_command("sleep 5 | wc -l"), 10)
 
     assert time.monotonic() - started < 3
     assert result["timed_out"] is True

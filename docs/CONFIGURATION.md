@@ -76,9 +76,9 @@ Copy `src/cmd_line_mcp/default_config.json` and customize. Lists set in a JSON c
 
 | Category | Description | Examples | Requires Approval |
 |----------|-------------|----------|-------------------|
-| Read | Safe, read-only operations | `ls`, `cat`, `grep`, `find`, `head`, `tail`, `sort`, `wc` | No |
-| Write | Data modification | `cp`, `mv`, `rm`, `mkdir`, `touch`, `chmod`, `tar`, `echo` | Yes |
-| System | System-level operations | `ps`, `ping`, `curl`, `wget`, `netstat` | Yes |
+| Read | Safe, read-only operations | `ls`, `cat`, `grep`, `head`, `tail`, `wc`, `du` | No |
+| Write | Data modification | `cp`, `mv`, `rm`, `mkdir`, `touch`, `chmod`, `gzip`, `echo` | Yes |
+| System | System-level operations | `ps`, `ping`, `netstat`, `who` | Yes |
 | Blocked | Dangerous commands | `sudo`, `bash`, `sh`, `python`, `eval`, `env`, `xargs` | Always denied |
 
 Commands on the hard-blocked floor (`policy.HARD_BLOCKED`: shells, interpreters and wrappers such as `env`, `xargs` and `timeout`) are rejected as a command even if a config lists them. See [SECURITY.md](SECURITY.md#hard-blocked-floor).

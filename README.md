@@ -69,16 +69,16 @@ Pipes, `;`, `&&` and `||` are supported, and each command is validated independe
 
 | Category    | Commands                                                       | Approval       |
 |:------------|:---------------------------------------------------------------|:--------------:|
-| **Read**    | `ls`, `cat`, `grep`, `find`, `head`, `tail`, `sort`, `wc`, …  | Auto           |
-| **Write**   | `cp`, `mv`, `rm`, `mkdir`, `touch`, `chmod`, `tar`, `echo`, … | Required       |
-| **System**  | `ps`, `ping`, `curl`, `wget`, `netstat`, …                    | Required       |
+| **Read**    | `ls`, `cat`, `grep`, `head`, `tail`, `wc`, `du`, …            | Auto           |
+| **Write**   | `cp`, `mv`, `rm`, `mkdir`, `touch`, `chmod`, `gzip`, `echo`, … | Required       |
+| **System**  | `ps`, `ping`, `netstat`, `who`, …                             | Required       |
 | **Blocked** | `sudo`, `bash`, `sh`, `python`, `eval`, `env`, `xargs`, …     | Always denied  |
 
 ### What's Blocked
 
 - **Hard-blocked floor** — shells, interpreters and programs that run other programs (`env`, `xargs`, `nohup`, `timeout`, …). Enforced in code, so a config cannot re-enable them.
 - **Blocked list** — adds `dd`, `mkfs`, `mount`, `shutdown` and similar; configurable.
-- **Dangerous patterns** — configurable regexes, by default covering writes to system paths, `rm -rf /`, `tar` command execution and `find -exec` with `sh`, `bash`, `zsh`, `ksh`, `csh`, `fish`, `python`/`python2`/`python3`, `perl`, `ruby`, `node` or `env`. Default read commands such as `find` and `sort` can still write files or run other programs until per-command argument rules land.
+- **Dangerous patterns** — configurable regexes, by default covering writes to system paths, `rm -rf /`, `tar` command execution and `find -exec` with `sh`, `bash`, `zsh`, `ksh`, `csh`, `fish`, `python`/`python2`/`python3`, `perl`, `ruby`, `node` or `env`. Commands whose options can write files or run other programs (`find`, `sort`, `tar`, `zip`, `unzip`, `curl`, `wget`) are left out of the defaults until per-command argument rules exist; adding them to your config re-enables those options.
 
 See [docs/SECURITY.md](docs/SECURITY.md) for the full lists, the threat model and known limitations.
 

@@ -22,15 +22,15 @@
   "commands": {
     "read": [
       "ls", "pwd", "cat", "head", "tail", "grep",
-      "find", "which", "du", "df", "file", "uname", "hostname",
-      "uptime", "date", "whoami", "id", "sort", "wc"
+      "which", "du", "df", "file", "uname", "hostname",
+      "uptime", "date", "whoami", "id", "wc"
     ],
     "write": [
       "cp", "mv", "rm", "mkdir", "rmdir", "touch", "chmod", "chown",
-      "ln", "echo", "printf", "tar", "gzip", "zip", "unzip"
+      "ln", "echo", "printf", "gzip"
     ],
     "system": [
-      "ps", "who", "netstat", "ifconfig", "ping", "curl", "wget"
+      "ps", "who", "netstat", "ifconfig", "ping"
     ],
     "blocked": [
       "sudo", "su", "bash", "sh", "zsh", "ksh", "csh", "fish",

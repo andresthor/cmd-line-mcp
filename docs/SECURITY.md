@@ -123,7 +123,7 @@ These are documented, not fixed:
 - **Redirect-open race**: the server checks a redirect target, then `/bin/sh` opens it. A concurrent local process could swap a path component for a symlink in between.
 - **Glob listing before denial**: expanding a glob lists a directory before the path check can deny it. Matches are capped.
 - **Approval tools are model-callable**: `approve_directory` and `approve_command_type` are ordinary MCP tools. The only gate is your client's per-tool confirmation.
-- **Arguments that run programs or write files**: until per-command argument rules land in `policy.ARG_RULES`, default read commands can still run other programs or write and delete files without approval. Examples: `find -exec` with a program outside the pattern's interpreter set, `find -delete` or `-fprint`, `sort -o`.
+- **Arguments that run programs or write files**: per-command argument rules (`policy.ARG_RULES`) are not written yet. `find`, `sort`, `tar`, `zip`, `unzip`, `curl` and `wget` are therefore left out of the defaults. If a config lists them, their options can run other programs or write and delete files without approval — e.g. `find -exec` with a program outside the pattern's interpreter set, `find -delete` or `-fprint`, `sort -o`.
 - **`PATH` lookup**: the command word is resolved through `PATH`. A writable directory early in `PATH` can shadow `ls`.
 - **Environment controls config**: whoever controls the server's environment or `.env` file can widen command lists and whitelists. The floor still applies.
 - **`require_session_id: false`** (the default) auto-approves write and system commands. So does a client that sends no session ID while `allow_user_confirmation` is `true`. Set `allow_user_confirmation: false` to require an explicit approval.

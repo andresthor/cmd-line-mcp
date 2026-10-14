@@ -34,7 +34,8 @@ An executor that runs commands without `/bin/sh` is planned for 0.7.
 
 ### Removed
 
-- Default read commands: `less`, `env`, `history`, `man`, `info`, `help`.
-- Default write commands: `export`, `awk`, `sed`.
-- Default system commands: `top`, `htop`, `ssh`, `scp`, `xargs`.
+- Default read commands: `less`, `env`, `history`, `man`, `info`, `help`, `find`, `sort`.
+- Default write commands: `export`, `awk`, `sed`, `tar`, `zip`, `unzip`.
+- Default system commands: `top`, `htop`, `ssh`, `scp`, `xargs`, `curl`, `wget`.
+- `find`, `sort`, `tar`, `zip`, `unzip`, `curl` and `wget` stay out of the defaults until per-command argument rules exist for them; a user config can still list them.
 - `env` and `xargs` moved to the blocked list.

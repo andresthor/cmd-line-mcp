@@ -159,8 +159,8 @@ class CommandLineMCP:
                 "description": "Find large files in downloads folder",
             },
             {
-                "command": 'find ~/Downloads -type f -name "*.pdf"',
-                "description": "Find all PDF files in downloads",
+                "command": "ls -R ~/Downloads | grep pdf",
+                "description": "Find PDF files in downloads",
             },
             {
                 "command": "head -n 20 ~/Documents/notes.txt",
@@ -171,8 +171,8 @@ class CommandLineMCP:
                 "description": "List only the directories",
             },
             {
-                "command": "du -sh ~/Downloads/* | sort -h",
-                "description": "Sort downloads by size",
+                "command": "du -sh ~/Downloads/*",
+                "description": "Show the size of each entry in downloads",
             },
         ]
 
@@ -329,28 +329,18 @@ class CommandLineMCP:
                 "examples": self.usage_examples,
                 "recommended_approach": {
                     "finding_large_files": (
-                        "Use 'du -h <directory>/* | sort -hr | head -n 10' to find "
-                        "the 10 largest files"
+                        "Use 'du -sh <directory>/*' to see the size of each entry"
                     ),
                     "file_searching": (
-                        "Use 'find <directory> -type f -name \"pattern\"' for file "
-                        "searches"
+                        "Use 'ls -R <directory> | grep pattern' for file searches"
                     ),
                     "text_searching": (
                         "Use 'grep \"pattern\" <file>' to search in files"
                     ),
                     "file_viewing": "Use 'cat', 'head', or 'tail' for viewing files",
-                    "sorting": (
-                        "Use 'sort' with options like -n (numeric), -r (reverse), "
-                        "-h (human readable sizes)"
-                    ),
                     "text_filtering": (
                         "Pipe output into 'grep' to filter lines. For example: "
                         "\"ls -la | grep '^d'\" to list only directories"
-                    ),
-                    "size_sorting": (
-                        "Use 'du -sh <directory>/* | sort -h' to list entries "
-                        "by size"
                     ),
                 },
                 "permissions": {
