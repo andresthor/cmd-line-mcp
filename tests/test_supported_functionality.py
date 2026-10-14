@@ -17,6 +17,16 @@ def default_cmd_lists():
     return config.get_effective_command_lists()
 
 
+@pytest.fixture
+def opt_in_cmd_lists(default_cmd_lists):
+    """Default lists plus commands left out of the defaults, as a user config would."""
+    lists = {k: list(v) for k, v in default_cmd_lists.items()}
+    lists["read"] += ["find", "sort"]
+    lists["write"] += ["tar", "zip", "unzip", "awk", "sed"]
+    lists["system"] += ["curl", "wget"]
+    return lists
+
+
 def _valid(cmd_lists, command, expected_type):
     """Assert a command is valid with the expected type."""
     result = validate_command(
@@ -27,9 +37,9 @@ def _valid(cmd_lists, command, expected_type):
         cmd_lists["blocked"],
         cmd_lists["dangerous_patterns"],
     )
-    assert result["is_valid"] is True, (
-        f"Expected '{command}' to be valid, got error: {result['error']}"
-    )
+    assert (
+        result["is_valid"] is True
+    ), f"Expected '{command}' to be valid, got error: {result['error']}"
     assert result["command_type"] == expected_type
 
 
@@ -58,16 +68,16 @@ def test_grep_pattern(default_cmd_lists):
     _valid(default_cmd_lists, "grep 'search term' /tmp/file.txt", "read")
 
 
-def test_find_by_name(default_cmd_lists):
-    _valid(default_cmd_lists, 'find /tmp -name "*.txt"', "read")
+def test_find_by_name(opt_in_cmd_lists):
+    _valid(opt_in_cmd_lists, 'find /tmp -name "*.txt"', "read")
 
 
-def test_find_by_type(default_cmd_lists):
-    _valid(default_cmd_lists, "find /tmp -type f -name '*.pdf'", "read")
+def test_find_by_type(opt_in_cmd_lists):
+    _valid(opt_in_cmd_lists, "find /tmp -type f -name '*.pdf'", "read")
 
 
-def test_find_maxdepth(default_cmd_lists):
-    _valid(default_cmd_lists, "find /tmp -maxdepth 2 -mtime -1", "read")
+def test_find_maxdepth(opt_in_cmd_lists):
+    _valid(opt_in_cmd_lists, "find /tmp -maxdepth 2 -mtime -1", "read")
 
 
 def test_head(default_cmd_lists):
@@ -82,12 +92,12 @@ def test_wc(default_cmd_lists):
     _valid(default_cmd_lists, "wc -l /tmp/file.txt", "read")
 
 
-def test_sort(default_cmd_lists):
-    _valid(default_cmd_lists, "sort /tmp/file.txt", "read")
+def test_sort(opt_in_cmd_lists):
+    _valid(opt_in_cmd_lists, "sort /tmp/file.txt", "read")
 
 
-def test_sort_numeric(default_cmd_lists):
-    _valid(default_cmd_lists, "sort -rn /tmp/file.txt", "read")
+def test_sort_numeric(opt_in_cmd_lists):
+    _valid(opt_in_cmd_lists, "sort -rn /tmp/file.txt", "read")
 
 
 def test_du(default_cmd_lists):
@@ -111,8 +121,16 @@ def test_date(default_cmd_lists):
 
 
 def test_env_bare(default_cmd_lists):
-    """env with no arguments (show environment) must remain valid."""
-    _valid(default_cmd_lists, "env", "read")
+    """env runs other programs, so it is hard-blocked even with no arguments."""
+    result = validate_command(
+        "env",
+        default_cmd_lists["read"],
+        default_cmd_lists["write"],
+        default_cmd_lists["system"],
+        default_cmd_lists["blocked"],
+        default_cmd_lists["dangerous_patterns"],
+    )
+    assert result["is_valid"] is False
 
 
 # ---------------------------------------------------------------------------
@@ -148,24 +166,24 @@ def test_echo(default_cmd_lists):
     _valid(default_cmd_lists, "echo hello world", "write")
 
 
-def test_tar_create(default_cmd_lists):
-    _valid(default_cmd_lists, "tar -czf /tmp/archive.tar.gz /tmp/dir", "write")
+def test_tar_create(opt_in_cmd_lists):
+    _valid(opt_in_cmd_lists, "tar -czf /tmp/archive.tar.gz /tmp/dir", "write")
 
 
-def test_tar_extract(default_cmd_lists):
-    _valid(default_cmd_lists, "tar -xzf /tmp/archive.tar.gz -C /tmp", "write")
+def test_tar_extract(opt_in_cmd_lists):
+    _valid(opt_in_cmd_lists, "tar -xzf /tmp/archive.tar.gz -C /tmp", "write")
 
 
 def test_gzip(default_cmd_lists):
     _valid(default_cmd_lists, "gzip /tmp/file.txt", "write")
 
 
-def test_zip(default_cmd_lists):
-    _valid(default_cmd_lists, "zip /tmp/archive.zip /tmp/file.txt", "write")
+def test_zip(opt_in_cmd_lists):
+    _valid(opt_in_cmd_lists, "zip /tmp/archive.zip /tmp/file.txt", "write")
 
 
-def test_unzip(default_cmd_lists):
-    _valid(default_cmd_lists, "unzip /tmp/archive.zip -d /tmp", "write")
+def test_unzip(opt_in_cmd_lists):
+    _valid(opt_in_cmd_lists, "unzip /tmp/archive.zip -d /tmp", "write")
 
 
 # ---------------------------------------------------------------------------
@@ -181,8 +199,8 @@ def test_ping(default_cmd_lists):
     _valid(default_cmd_lists, "ping -c 1 localhost", "system")
 
 
-def test_curl(default_cmd_lists):
-    _valid(default_cmd_lists, "curl -s https://example.com", "system")
+def test_curl(opt_in_cmd_lists):
+    _valid(opt_in_cmd_lists, "curl -s https://example.com", "system")
 
 
 def test_who(default_cmd_lists):
@@ -190,63 +208,63 @@ def test_who(default_cmd_lists):
 
 
 # ---------------------------------------------------------------------------
-# Safe awk — text processing without execution
+# Safe awk — user-added, text processing without execution
 # ---------------------------------------------------------------------------
 
 
-def test_awk_print_columns(default_cmd_lists):
+def test_awk_print_columns(opt_in_cmd_lists):
     """awk column extraction must remain valid."""
-    _valid(default_cmd_lists, "ls -la | awk '{print $1, $9}'", "write")
+    _valid(opt_in_cmd_lists, "ls -la | awk '{print $1, $9}'", "write")
 
 
-def test_awk_conditional_filter(default_cmd_lists):
+def test_awk_conditional_filter(opt_in_cmd_lists):
     """awk conditional filtering must remain valid."""
-    _valid(default_cmd_lists, "cat /tmp/file | awk '{if($1>10) print $0}'", "write")
+    _valid(opt_in_cmd_lists, "cat /tmp/file | awk '{if($1>10) print $0}'", "write")
 
 
-def test_awk_field_separator(default_cmd_lists):
+def test_awk_field_separator(opt_in_cmd_lists):
     """awk with custom field separator must remain valid."""
-    _valid(default_cmd_lists, "awk -F: '{print $1}' /tmp/file", "write")
+    _valid(opt_in_cmd_lists, "awk -F: '{print $1}' /tmp/file", "write")
 
 
-def test_awk_arithmetic(default_cmd_lists):
+def test_awk_arithmetic(opt_in_cmd_lists):
     """awk arithmetic must remain valid."""
-    _valid(default_cmd_lists, "awk '{sum += $1} END {print sum}' /tmp/file", "write")
+    _valid(opt_in_cmd_lists, "awk '{sum += $1} END {print sum}' /tmp/file", "write")
 
 
-def test_awk_pattern_match(default_cmd_lists):
+def test_awk_pattern_match(opt_in_cmd_lists):
     """awk pattern matching must remain valid."""
-    _valid(default_cmd_lists, "awk '/pattern/ {print $0}' /tmp/file", "write")
+    _valid(opt_in_cmd_lists, "awk '/pattern/ {print $0}' /tmp/file", "write")
 
 
 # ---------------------------------------------------------------------------
-# Safe sed — substitution without /e flag
+# Safe sed — user-added, substitution without /e flag
 # ---------------------------------------------------------------------------
 
 
-def test_sed_basic_substitution(default_cmd_lists):
+def test_sed_basic_substitution(opt_in_cmd_lists):
     """sed basic substitution must remain valid."""
-    _valid(default_cmd_lists, "sed 's/foo/bar/' /tmp/file", "write")
+    _valid(opt_in_cmd_lists, "sed 's/foo/bar/' /tmp/file", "write")
 
 
-def test_sed_global_substitution(default_cmd_lists):
+def test_sed_global_substitution(opt_in_cmd_lists):
     """sed global substitution must remain valid."""
-    _valid(default_cmd_lists, "echo hello | sed 's/hello/world/g'", "write")
+    _valid(opt_in_cmd_lists, "echo hello | sed 's/hello/world/g'", "write")
 
 
-def test_sed_case_insensitive(default_cmd_lists):
+def test_sed_case_insensitive(opt_in_cmd_lists):
     """sed case-insensitive substitution must remain valid."""
-    _valid(default_cmd_lists, "sed 's/foo/bar/i' /tmp/file", "write")
+    _valid(opt_in_cmd_lists, "sed 's/foo/bar/i' /tmp/file", "write")
 
 
-def test_sed_line_range(default_cmd_lists):
+def test_sed_line_range(opt_in_cmd_lists):
     """sed line range printing must remain valid."""
-    _valid(default_cmd_lists, "sed -n '1,5p' /tmp/file", "write")
+    _valid(opt_in_cmd_lists, "sed -n '1,5p' /tmp/file", "write")
 
 
-def test_sed_delete_lines(default_cmd_lists):
+def test_sed_delete_lines(opt_in_cmd_lists):
     """sed line deletion must remain valid."""
-    _valid(default_cmd_lists, "sed '/^#/d' /tmp/file", "write")
+    _valid(opt_in_cmd_lists, "sed '/^#/d' /tmp/file", "write")
 
 
 # ---------------------------------------------------------------------------
@@ -254,37 +272,43 @@ def test_sed_delete_lines(default_cmd_lists):
 # ---------------------------------------------------------------------------
 
 
-def test_pipeline_grep_sort_wc(default_cmd_lists):
-    _valid(default_cmd_lists, "cat /tmp/file | grep pattern | sort | wc -l", "read")
+def test_pipeline_grep_sort_wc(opt_in_cmd_lists):
+    _valid(opt_in_cmd_lists, "cat /tmp/file | grep pattern | sort | wc -l", "read")
 
 
-def test_pipeline_find_grep(default_cmd_lists):
-    _valid(default_cmd_lists, "find /tmp -name '*.log' | grep error", "read")
+def test_pipeline_find_grep(opt_in_cmd_lists):
+    _valid(opt_in_cmd_lists, "find /tmp -name '*.log' | grep error", "read")
 
 
-def test_pipeline_du_sort(default_cmd_lists):
-    _valid(default_cmd_lists, "du -h /tmp | sort -h", "read")
+def test_pipeline_du_sort(opt_in_cmd_lists):
+    _valid(opt_in_cmd_lists, "du -h /tmp | sort -h", "read")
 
 
-def test_pipeline_ls_awk(default_cmd_lists):
-    _valid(default_cmd_lists, "ls -la /tmp | awk '{print $5, $9}'", "write")
+def test_pipeline_ls_awk(opt_in_cmd_lists):
+    _valid(opt_in_cmd_lists, "ls -la /tmp | awk '{print $5, $9}'", "write")
 
 
 # ---------------------------------------------------------------------------
-# Safe xargs use
+# xargs runs other programs, so it is hard-blocked whatever it wraps
 # ---------------------------------------------------------------------------
 
 
-def test_xargs_grep(default_cmd_lists):
-    """xargs piped to grep must remain valid."""
-    _valid(default_cmd_lists, "find /tmp -name '*.txt' | xargs grep pattern", "system")
-
-
-def test_xargs_cat(default_cmd_lists):
-    """xargs piped to cat must remain valid."""
-    _valid(default_cmd_lists, "echo /tmp/file | xargs cat", "system")
-
-
-def test_xargs_wc(default_cmd_lists):
-    """xargs piped to wc must remain valid."""
-    _valid(default_cmd_lists, "find /tmp -name '*.txt' | xargs wc -l", "system")
+@pytest.mark.parametrize(
+    "command",
+    [
+        "find /tmp -name '*.txt' | xargs grep pattern",
+        "echo /tmp/file | xargs cat",
+        "find /tmp -name '*.txt' | xargs wc -l",
+    ],
+)
+def test_xargs_hard_blocked(opt_in_cmd_lists, command):
+    result = validate_command(
+        command,
+        opt_in_cmd_lists["read"],
+        opt_in_cmd_lists["write"],
+        opt_in_cmd_lists["system"],
+        opt_in_cmd_lists["blocked"],
+        opt_in_cmd_lists["dangerous_patterns"],
+    )
+    assert result["is_valid"] is False
+    assert "'xargs' is blocked" in result["error"]

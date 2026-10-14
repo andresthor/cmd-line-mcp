@@ -39,8 +39,7 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
       "command": "/path/to/venv/bin/cmd-line-mcp",
       "args": ["--config", "/path/to/config.json"],
       "env": {
-        "CMD_LINE_MCP_SECURITY_REQUIRE_SESSION_ID": "false",
-        "CMD_LINE_MCP_SECURITY_AUTO_APPROVE_DIRECTORIES_IN_DESKTOP_MODE": "true"
+        "CMD_LINE_MCP_SECURITY_REQUIRE_SESSION_ID": "false"
       }
     }
   }
@@ -49,8 +48,8 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 
 Restart Claude Desktop after saving.
 
-> [!TIP]
-> Set `require_session_id: false` to prevent approval loops in Claude Desktop.
+> [!WARNING]
+> `require_session_id: false` is the default and prevents approval loops in Claude Desktop, but it auto-approves write and system commands; set `allow_user_confirmation: false` to require explicit approval instead. The model can request that approval itself through `approve_command_type`, so your client's tool confirmation is the real gate. `auto_approve_directories_in_desktop_mode: true` turns off directory confinement entirely. See [docs/SECURITY.md](https://github.com/andresthor/cmd-line-mcp/blob/main/docs/SECURITY.md#known-limitations).
 
 ---
 
@@ -58,25 +57,30 @@ Restart Claude Desktop after saving.
 
 Commands go through a validation pipeline before execution:
 
-1. **Pattern matching** — blocks dangerous constructs (`system()`, shell escapes, etc.)
-2. **Command classification** — each command must be in the read, write, system, or blocked list
-3. **Directory check** — target directory must be whitelisted or session-approved
-4. **Approval check** — write/system commands require session approval
+1. **Pattern matching** — rejects configured dangerous patterns (writes to system paths, `tar --to-command`, etc.)
+2. **Parsing** — the command is parsed by a strict lexer; unsupported shell syntax is rejected
+3. **Command classification** — each command must be in the read, write or system list, and not blocked
+4. **Path check** — every path, glob match and redirect target in every command must be whitelisted or session-approved
+5. **Approval check** — write/system commands require approval
 
-Pipes, semicolons, and `&` are supported — each segment is validated independently.
+Pipes, `;`, `&&` and `||` are supported, and each command is validated independently. Background `&`, variables (`$NAME`), command substitution and subshells are rejected. The server runs its own fully quoted rendering of the validated command, never the raw input.
 
 ### What's Allowed
 
 | Category    | Commands                                                       | Approval       |
 |:------------|:---------------------------------------------------------------|:--------------:|
-| **Read**    | `ls`, `cat`, `grep`, `find`, `head`, `tail`, `sort`, `wc`, …  | Auto           |
-| **Write**   | `cp`, `mv`, `rm`, `mkdir`, `touch`, `chmod`, `awk`, `sed`, …  | Required       |
-| **System**  | `ps`, `ping`, `curl`, `ssh`, `xargs`, …                       | Required       |
-| **Blocked** | `sudo`, `bash`, `sh`, `python`, `eval`, …                     | Always denied  |
+| **Read**    | `ls`, `cat`, `grep`, `head`, `tail`, `wc`, `du`, …            | Auto           |
+| **Write**   | `cp`, `mv`, `rm`, `mkdir`, `touch`, `chmod`, `gzip`, `echo`, … | Required       |
+| **System**  | `ps`, `ping`, `netstat`, `who`, …                             | Required       |
+| **Blocked** | `sudo`, `bash`, `sh`, `python`, `eval`, `env`, `xargs`, …     | Always denied  |
 
 ### What's Blocked
 
-Shells, scripting interpreters, and known command-execution vectors are blocked — including indirect execution through `awk system()`, `sed /e`, `find -exec`, `tar --checkpoint-action`, `env`, and `xargs`. See [docs/SECURITY.md](docs/SECURITY.md) for the full list.
+- **Hard-blocked floor** — shells, interpreters and programs that run other programs (`env`, `xargs`, `nohup`, `timeout`, …). Enforced in code, so a config cannot re-enable them.
+- **Blocked list** — adds `dd`, `mkfs`, `mount`, `shutdown` and similar; configurable.
+- **Dangerous patterns** — configurable regexes, by default covering writes to system paths, `rm -rf /`, `tar` command execution and `find -exec` with `sh`, `bash`, `zsh`, `ksh`, `csh`, `fish`, `python`/`python2`/`python3`, `perl`, `ruby`, `node` or `env`. Commands whose options can write files or run other programs (`find`, `sort`, `tar`, `zip`, `unzip`, `curl`, `wget`) are left out of the defaults until per-command argument rules exist; adding them to your config re-enables those options.
+
+See [docs/SECURITY.md](https://github.com/andresthor/cmd-line-mcp/blob/main/docs/SECURITY.md) for the full lists, the threat model and known limitations.
 
 ---
 
@@ -92,7 +96,7 @@ export CMD_LINE_MCP_SECURITY_WHITELISTED_DIRECTORIES="/projects,/var/data"
 export CMD_LINE_MCP_COMMANDS_READ="jq,rg"
 ```
 
-See [docs/CONFIGURATION.md](docs/CONFIGURATION.md) for full configuration reference, MCP tool documentation, and directory security details.
+See [docs/CONFIGURATION.md](https://github.com/andresthor/cmd-line-mcp/blob/main/docs/CONFIGURATION.md) for full configuration reference, MCP tool documentation, and directory security details.
 
 ---
 

@@ -5,17 +5,20 @@ Command-line MCP server that safely executes Unix/macOS terminal commands.
 import argparse
 import asyncio
 import logging
+import math
 import os
+import signal
+from collections.abc import Iterable
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
 from cmd_line_mcp.config import Config
 from cmd_line_mcp.security import (
-    validate_command,
-    extract_directory_from_command,
+    CommandRejected,
     is_directory_whitelisted,
     normalize_path,
+    prepare_command,
 )
 from cmd_line_mcp.session import SessionManager
 
@@ -25,6 +28,32 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+# Variables that make sh or bash source files, import functions or change
+# parsing before the command runs; BASH_FUNC_* names are removed too.
+_SHELL_STARTUP_ENV = frozenset(
+    {"ENV", "BASH_ENV", "SHELLOPTS", "BASHOPTS", "CDPATH", "GLOBIGNORE", "IFS"}
+)
+_DEFAULT_COMMAND_TIMEOUT = 60.0
+_READ_CHUNK_SIZE = 64 * 1024
+_KILL_GRACE_SECONDS = 5
+_TRUNCATED_MARKER = "\n... [output truncated due to size]"
+_AND_OR_SUPPORTED = "Supported (&& and ||; background & is rejected)"
+_COMMAND_RESTRICTIONS = (
+    "Variables ($NAME), command substitution ($() and backticks), background "
+    "'&', subshells, here-documents and line breaks are rejected. Redirect "
+    "targets must be in approved directories, and '>' or '>>' makes the "
+    "command a write command."
+)
+
+
+def _kill_process_group(process: asyncio.subprocess.Process) -> None:
+    """Send SIGKILL to the process group led by ``process``."""
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except (ProcessLookupError, PermissionError):
+        # Group already gone; macOS reports EPERM for a group of zombies.
+        pass
 
 
 class CommandLineMCP:
@@ -46,12 +75,14 @@ class CommandLineMCP:
 
         # Create a fixed persistent session for Claude Desktop mode - FIXED ID
         self.claude_desktop_session_id = "claude_desktop_fixed_session"
+        self._warned_invalid_timeout = False
 
-        # NOTE: We don't pre-approve any directories - let the user explicitly approve them
-        # or configure them in the whitelist
+        # NOTE: We don't pre-approve any directories - let the user explicitly
+        # approve them or configure them in the whitelist
 
         logger.info(
-            f"Created persistent Claude Desktop session: {self.claude_desktop_session_id}"
+            "Created persistent Claude Desktop session: "
+            f"{self.claude_desktop_session_id}"
         )
 
         # Set up logging
@@ -76,7 +107,7 @@ class CommandLineMCP:
 
         # Initialize MCP app
         server_config = self.config.get_section("server")
-        version = server_config.get("version", "0.6.0")
+        version = server_config.get("version", "0.6.1")
         description = server_config.get(
             "description",
             "MCP server for safely executing command-line tools",
@@ -106,12 +137,12 @@ class CommandLineMCP:
                     else "Not supported"
                 ),
                 "ampersand": (
-                    "Supported"
+                    _AND_OR_SUPPORTED
                     if self.separator_support["ampersand"]
                     else "Not supported"
                 ),
             },
-            "command_restrictions": "Special characters like $(), ${}, backticks, and I/O redirection are blocked",
+            "command_restrictions": _COMMAND_RESTRICTIONS,
         }
 
         self.usage_examples = [
@@ -128,20 +159,20 @@ class CommandLineMCP:
                 "description": "Find large files in downloads folder",
             },
             {
-                "command": 'find ~/Downloads -type f -name "*.pdf"',
-                "description": "Find all PDF files in downloads",
+                "command": "ls -R ~/Downloads | grep pdf",
+                "description": "Find PDF files in downloads",
             },
             {
                 "command": "head -n 20 ~/Documents/notes.txt",
                 "description": "View the first 20 lines of a file",
             },
             {
-                "command": "ls -la | awk '{print $1, $9}'",
-                "description": "List files showing permissions and names using awk",
+                "command": "ls -la | grep '^d'",
+                "description": "List only the directories",
             },
             {
-                "command": "cat file.txt | awk '{if($1>10) print $0}'",
-                "description": "Filter lines where first column is greater than 10",
+                "command": "du -sh ~/Downloads/*",
+                "description": "Show the size of each entry in downloads",
             },
         ]
 
@@ -191,183 +222,15 @@ class CommandLineMCP:
             Returns:
                 A dictionary with command output and status
             """
-            # For Claude Desktop compatibility, use the fixed session ID when no session ID provided
+            # For Claude Desktop compatibility, use the fixed session ID when no
+            # session ID is provided
             if not session_id:
                 session_id = self.claude_desktop_session_id
                 logger.info(
-                    f"Using persistent Claude Desktop session for read command: {session_id}"
+                    "Using persistent Claude Desktop session for read command: "
+                    f"{session_id}"
                 )
 
-            # Validate command and check directory permissions in one go
-            # Get the latest command lists
-            command_lists = self.config.get_effective_command_lists()
-            allow_separators = self.config.get(
-                "security", "allow_command_separators", True
-            )
-
-            validation = validate_command(
-                command,
-                command_lists["read"],
-                command_lists["write"],
-                command_lists["system"],
-                command_lists["blocked"],
-                command_lists["dangerous_patterns"],
-                allow_command_separators=allow_separators,
-            )
-
-            if not validation["is_valid"]:
-                return {
-                    "success": False,
-                    "output": "",
-                    "error": validation["error"],
-                }
-
-            if validation["command_type"] != "read":
-                return {
-                    "success": False,
-                    "output": "",
-                    "error": "This tool only supports read commands. Use execute_command for other command types.",
-                }
-
-            # Extract directory and check permissions (apply same directory checks as in _execute_command)
-            working_dir = extract_directory_from_command(command)
-            logger.info(f"Read command - extracted working directory: {working_dir}")
-
-            # Check if directory is whitelisted or has session approval
-            directory_allowed = False
-
-            if working_dir:
-                # Check global whitelist first
-                if is_directory_whitelisted(working_dir, self.whitelisted_directories):
-                    directory_allowed = True
-                    logger.info(
-                        f"Read command - directory '{working_dir}' is globally whitelisted"
-                    )
-                # Check session approvals if we have a session ID
-                elif session_id and self.session_manager.has_directory_approval(
-                    session_id, working_dir
-                ):
-                    directory_allowed = True
-                    logger.info(
-                        f"Read command - directory '{working_dir}' is approved for session {session_id}"
-                    )
-                else:
-                    logger.warning(
-                        f"Read command - directory '{working_dir}' is not whitelisted or approved"
-                    )
-                    # For Claude Desktop compatibility mode (require_session_id = False)
-                    require_session_id = self.config.get(
-                        "security", "require_session_id", False
-                    )
-                    auto_approve_in_desktop = self.config.get_section("security").get(
-                        "auto_approve_directories_in_desktop_mode", False
-                    )
-
-                    if not require_session_id:
-                        # Check if the directory is approved in the persistent desktop session
-                        if self.session_manager.has_directory_approval(
-                            self.claude_desktop_session_id, working_dir
-                        ):
-                            directory_allowed = True
-                            logger.info(
-                                f"Read command - directory '{working_dir}' is approved in persistent desktop session"
-                            )
-                        elif auto_approve_in_desktop:
-                            # Auto-approve directories in desktop mode if configured
-                            directory_allowed = True
-                            # Also add to persistent session for future requests
-                            self.session_manager.approve_directory(
-                                self.claude_desktop_session_id, working_dir
-                            )
-                            logger.warning(
-                                f"Read command - auto-approving directory access in desktop mode: {working_dir}"
-                            )
-                        else:
-                            # Only allow whitelisted directories if auto-approve is off
-                            directory_allowed = False
-                            logger.warning(
-                                f"Read command - directory '{working_dir}' is not whitelisted - restricting access"
-                            )
-            else:
-                # If we couldn't extract a directory, default to requiring permission
-                logger.warning(
-                    "Read command - could not extract working directory from command"
-                )
-                working_dir = os.getcwd()  # Default to current directory
-
-                # Check whitelist for current directory
-                if is_directory_whitelisted(working_dir, self.whitelisted_directories):
-                    directory_allowed = True
-                elif session_id and self.session_manager.has_directory_approval(
-                    session_id, working_dir
-                ):
-                    directory_allowed = True
-                else:
-                    # For Claude Desktop compatibility mode
-                    require_session_id = self.config.get(
-                        "security", "require_session_id", False
-                    )
-                    auto_approve_in_desktop = self.config.get_section("security").get(
-                        "auto_approve_directories_in_desktop_mode", False
-                    )
-
-                    if not require_session_id:
-                        # Check if the directory is approved in the persistent desktop session
-                        if self.session_manager.has_directory_approval(
-                            self.claude_desktop_session_id, working_dir
-                        ):
-                            directory_allowed = True
-                            logger.info(
-                                f"Read command - directory '{working_dir}' is approved in persistent desktop session"
-                            )
-                        elif auto_approve_in_desktop:
-                            # Auto-approve directories in desktop mode if configured
-                            directory_allowed = True
-                            # Also add to persistent session for future requests
-                            self.session_manager.approve_directory(
-                                self.claude_desktop_session_id, working_dir
-                            )
-                            logger.warning(
-                                f"Read command - auto-approving directory access in desktop mode: {working_dir}"
-                            )
-                        else:
-                            # Only allow whitelisted directories if auto-approve is off
-                            directory_allowed = False
-
-            # If directory is not allowed
-            if not directory_allowed:
-                # Check if we're in Claude Desktop mode (no session ID or require_session_id=false)
-                require_session_id = self.config.get(
-                    "security", "require_session_id", False
-                )
-                if not session_id or not require_session_id:
-                    # Always use the fixed persistent session ID for Claude Desktop
-                    desktop_session_id = self.claude_desktop_session_id
-
-                    # Include approval request information for Claude Desktop
-                    return {
-                        "success": False,
-                        "output": "",
-                        "error": f"Read command - access to directory '{working_dir}' is not allowed. Only whitelisted directories can be accessed.\n"
-                        + f"Whitelisted directories include: {', '.join(self.whitelisted_directories)}\n"
-                        + "Note: To request access to this directory, use the approve_directory tool with:\n"
-                        + f'  approve_directory(directory="{working_dir}", session_id="{desktop_session_id}", remember=True)',
-                        "directory": working_dir,
-                        "session_id": desktop_session_id,
-                        "requires_directory_approval": True,  # Signal that approval is needed
-                    }
-                else:
-                    # For normal mode, request approval
-                    return {
-                        "success": False,
-                        "output": "",
-                        "error": f"Read command - directory '{working_dir}' requires approval. Use approve_directory tool with session_id '{session_id}'.",
-                        "requires_directory_approval": True,
-                        "directory": working_dir,
-                        "session_id": session_id,
-                    }
-
-            # Now that we've validated both the command and directory permissions, execute the command
             return await self._execute_command(
                 command, command_type="read", session_id=session_id
             )
@@ -408,11 +271,12 @@ class CommandLineMCP:
             This tool provides comprehensive information about:
             - Supported commands in each category (read, write, system)
             - Blocked commands for security reasons
-            - Command chaining capabilities (pipes, semicolons, ampersands)
+            - Command chaining capabilities (|, ;, && and ||)
             - Usage restrictions and examples
 
             Returns:
-                A dictionary with detailed information about command capabilities and usage
+                A dictionary with detailed information about command capabilities
+                and usage
             """
             # Get the latest command lists and separator support
             command_lists = self.config.get_effective_command_lists()
@@ -421,7 +285,8 @@ class CommandLineMCP:
             # Log the separator support for debugging
             logger.info(f"Separator support status: {separator_support}")
             logger.info(
-                f"allow_command_separators setting: {self.config.get('security', 'allow_command_separators')}"
+                "allow_command_separators setting: "
+                f"{self.config.get('security', 'allow_command_separators')}"
             )
 
             # Extra check for pipe character in dangerous patterns
@@ -450,12 +315,12 @@ class CommandLineMCP:
                         else "Not supported"
                     ),
                     "ampersand": (
-                        "Supported"
+                        _AND_OR_SUPPORTED
                         if separator_support["ampersand"]
                         else "Not supported"
                     ),
                 },
-                "command_restrictions": "Special characters like $(), ${}, backticks, and I/O redirection are blocked",
+                "command_restrictions": _COMMAND_RESTRICTIONS,
             }
 
             # Provide helpful information for Claude to understand command usage
@@ -463,13 +328,20 @@ class CommandLineMCP:
                 "capabilities": updated_capabilities,
                 "examples": self.usage_examples,
                 "recommended_approach": {
-                    "finding_large_files": "Use 'du -h <directory>/* | sort -hr | head -n 10' to find the 10 largest files",
-                    "file_searching": "Use 'find <directory> -type f -name \"pattern\"' for file searches",
-                    "text_searching": "Use 'grep \"pattern\" <file>' to search in files",
+                    "finding_large_files": (
+                        "Use 'du -sh <directory>/*' to see the size of each entry"
+                    ),
+                    "file_searching": (
+                        "Use 'ls -R <directory> | grep pattern' for file searches"
+                    ),
+                    "text_searching": (
+                        "Use 'grep \"pattern\" <file>' to search in files"
+                    ),
                     "file_viewing": "Use 'cat', 'head', or 'tail' for viewing files",
-                    "sorting": "Use 'sort' with options like -n (numeric), -r (reverse), -h (human readable sizes)",
-                    "text_processing": "Use 'awk' for advanced text processing. For example: 'ls -la | awk \"{print $1, $9}\"' to show permissions and filenames",
-                    "column_filtering": "Use 'awk' to filter by column values: 'cat data.txt | awk \"{if($3 > 100) print}\"' to show lines where column 3 exceeds 100",
+                    "text_filtering": (
+                        "Pipe output into 'grep' to filter lines. For example: "
+                        "\"ls -la | grep '^d'\" to list only directories"
+                    ),
                 },
                 "permissions": {
                     "read_commands": "Can be executed without confirmation",
@@ -508,12 +380,16 @@ class CommandLineMCP:
                 self.session_manager.approve_command_type(session_id, command_type)
                 return {
                     "success": True,
-                    "message": f"Command type '{command_type}' approved for this session",
+                    "message": (
+                        f"Command type '{command_type}' approved for this session"
+                    ),
                 }
             else:
                 return {
                     "success": True,
-                    "message": f"Command type '{command_type}' approved for one-time use",
+                    "message": (
+                        f"Command type '{command_type}' approved for one-time use"
+                    ),
                 }
 
         # Store reference to silence linter warnings
@@ -544,7 +420,10 @@ class CommandLineMCP:
             if is_directory_whitelisted(normalized_dir, self.whitelisted_directories):
                 return {
                     "success": True,
-                    "message": f"Directory '{normalized_dir}' is already globally whitelisted",
+                    "message": (
+                        f"Directory '{normalized_dir}' is already globally "
+                        "whitelisted"
+                    ),
                     "directory": normalized_dir,
                 }
 
@@ -552,7 +431,10 @@ class CommandLineMCP:
             if self.session_manager.has_directory_approval(session_id, normalized_dir):
                 return {
                     "success": True,
-                    "message": f"Directory '{normalized_dir}' is already approved for this session",
+                    "message": (
+                        f"Directory '{normalized_dir}' is already approved for "
+                        "this session"
+                    ),
                     "directory": normalized_dir,
                 }
 
@@ -561,13 +443,17 @@ class CommandLineMCP:
                 self.session_manager.approve_directory(session_id, normalized_dir)
                 return {
                     "success": True,
-                    "message": f"Directory '{normalized_dir}' approved for this session",
+                    "message": (
+                        f"Directory '{normalized_dir}' approved for this session"
+                    ),
                     "directory": normalized_dir,
                 }
             else:
                 return {
                     "success": True,
-                    "message": f"Directory '{normalized_dir}' approved for one-time use",
+                    "message": (
+                        f"Directory '{normalized_dir}' approved for one-time use"
+                    ),
                     "directory": normalized_dir,
                 }
 
@@ -636,7 +522,9 @@ class CommandLineMCP:
                 "directory_whitelisting": {
                     "enabled": True,
                     "whitelisted_directories": self.whitelisted_directories,
-                    "note": "Directories not in this list will require session approval",
+                    "note": (
+                        "Directories not in this list will require session approval"
+                    ),
                 },
             }
 
@@ -661,189 +549,73 @@ class CommandLineMCP:
         Returns:
             A dictionary with command output and status
         """
-        # Get the latest command lists and separator settings
         command_lists = self.config.get_effective_command_lists()
         allow_separators = self.config.get("security", "allow_command_separators", True)
+        timeout = self._command_timeout()
 
-        # Validate the command
-        validation = validate_command(
-            command,
-            command_lists["read"],
-            command_lists["write"],
-            command_lists["system"],
-            command_lists["blocked"],
-            command_lists["dangerous_patterns"],
-            allow_command_separators=allow_separators,
-        )
-
-        if not validation["is_valid"]:
+        try:
+            cwd = os.getcwd()
+        except OSError as error:
             return {
                 "success": False,
                 "output": "",
-                "error": validation["error"],
+                "error": f"Cannot determine the working directory: {error}",
             }
-
-        # If command_type is specified, ensure it matches the validated type
-        if command_type and validation["command_type"] != command_type:
+        try:
+            # Glob expansion lists directories; keep it off the event loop.
+            prepared = await asyncio.wait_for(
+                asyncio.to_thread(
+                    prepare_command,
+                    command,
+                    command_lists,
+                    command_lists["dangerous_patterns"],
+                    allow_separators,
+                    cwd,
+                ),
+                timeout,
+            )
+        except CommandRejected as error:
+            return {"success": False, "output": "", "error": str(error)}
+        except asyncio.TimeoutError:
             return {
                 "success": False,
                 "output": "",
-                "error": f"Command type mismatch. Expected {command_type}, got {validation['command_type']}",
+                "error": f"Validating the command took longer than {timeout:g} "
+                "seconds",
             }
 
-        actual_command_type = validation["command_type"]
+        actual_command_type = prepared.command_type
+        if command_type == "read" and actual_command_type != "read":
+            return {
+                "success": False,
+                "output": "",
+                "error": "This tool only supports read commands. "
+                "Use execute_command for other command types.",
+            }
+        if command_type and actual_command_type != command_type:
+            return {
+                "success": False,
+                "output": "",
+                "error": f"Command type mismatch. Expected {command_type}, "
+                f"got {actual_command_type}",
+            }
 
-        # Extract the working directory from the command
-        working_dir = extract_directory_from_command(command)
-        logger.info(f"Extracted working directory from command: {working_dir}")
+        denied = self._check_directories(prepared.directories, session_id)
+        if denied is not None:
+            return denied
 
-        # Check if directory is whitelisted or has session approval
-        directory_allowed = False
-
-        if working_dir:
-            # Check global whitelist first
-            if is_directory_whitelisted(working_dir, self.whitelisted_directories):
-                directory_allowed = True
-                logger.info(f"Directory '{working_dir}' is globally whitelisted")
-            # Check session approvals if we have a session ID
-            elif session_id and self.session_manager.has_directory_approval(
-                session_id, working_dir
-            ):
-                directory_allowed = True
-                logger.info(
-                    f"Directory '{working_dir}' is approved for session {session_id}"
-                )
-            else:
-                logger.warning(
-                    f"Directory '{working_dir}' is not whitelisted or approved"
-                )
-                # For Claude Desktop compatibility mode (require_session_id = False)
-                require_session_id = self.config.get(
-                    "security", "require_session_id", False
-                )
-                auto_approve_in_desktop = self.config.get_section("security").get(
-                    "auto_approve_directories_in_desktop_mode", False
-                )
-
-                if not require_session_id:
-                    # Check if the directory is approved in the persistent desktop session
-                    if self.session_manager.has_directory_approval(
-                        self.claude_desktop_session_id, working_dir
-                    ):
-                        directory_allowed = True
-                        logger.info(
-                            f"Directory '{working_dir}' is approved in persistent desktop session"
-                        )
-                    elif auto_approve_in_desktop:
-                        # Auto-approve directories in desktop mode if configured
-                        directory_allowed = True
-                        # Also add to persistent session for future requests
-                        self.session_manager.approve_directory(
-                            self.claude_desktop_session_id, working_dir
-                        )
-                        logger.warning(
-                            f"Auto-approving directory access in desktop mode: {working_dir}"
-                        )
-                    else:
-                        # Only allow whitelisted directories if auto-approve is off
-                        directory_allowed = False
-                        logger.warning(
-                            f"Directory '{working_dir}' is not whitelisted - restricting access"
-                        )
-        else:
-            # If we couldn't extract a directory, default to requiring permission
-            logger.warning("Could not extract working directory from command")
-            working_dir = os.getcwd()  # Default to current directory
-
-            # Check whitelist for current directory
-            if is_directory_whitelisted(working_dir, self.whitelisted_directories):
-                directory_allowed = True
-            elif session_id and self.session_manager.has_directory_approval(
-                session_id, working_dir
-            ):
-                directory_allowed = True
-            else:
-                # For Claude Desktop compatibility mode
-                require_session_id = self.config.get(
-                    "security", "require_session_id", False
-                )
-                auto_approve_in_desktop = self.config.get_section("security").get(
-                    "auto_approve_directories_in_desktop_mode", False
-                )
-
-                if not require_session_id:
-                    # Check if the directory is approved in the persistent desktop session
-                    if self.session_manager.has_directory_approval(
-                        self.claude_desktop_session_id, working_dir
-                    ):
-                        directory_allowed = True
-                        logger.info(
-                            f"Directory '{working_dir}' is approved in persistent desktop session"
-                        )
-                    elif auto_approve_in_desktop:
-                        # Auto-approve directories in desktop mode if configured
-                        directory_allowed = True
-                        # Also add to persistent session for future requests
-                        self.session_manager.approve_directory(
-                            self.claude_desktop_session_id, working_dir
-                        )
-                        logger.warning(
-                            f"Auto-approving directory access in desktop mode: {working_dir}"
-                        )
-                    else:
-                        # Only allow whitelisted directories if auto-approve is off
-                        directory_allowed = False
-
-        # If directory is not allowed
-        if not directory_allowed:
-            # Check if we're in Claude Desktop mode (no session ID or require_session_id=false)
+        if actual_command_type in ("write", "system"):
             require_session_id = self.config.get(
                 "security", "require_session_id", False
             )
-            if not session_id or not require_session_id:
-                # Always use the fixed persistent session ID for Claude Desktop
-                desktop_session_id = self.claude_desktop_session_id
-
-                # Include approval request information for Claude Desktop
-                return {
-                    "success": False,
-                    "output": "",
-                    "error": f"Access to directory '{working_dir}' is not allowed. Only whitelisted directories can be accessed.\n"
-                    + f"Whitelisted directories include: {', '.join(self.whitelisted_directories)}\n"
-                    + "Note: To request access to this directory, use the approve_directory tool with:\n"
-                    + f'  approve_directory(directory="{working_dir}", session_id="{desktop_session_id}", remember=True)',
-                    "directory": working_dir,
-                    "session_id": desktop_session_id,
-                    "requires_directory_approval": True,  # Signal that approval is needed
-                }
-            else:
-                # For normal mode, request approval
-                return {
-                    "success": False,
-                    "output": "",
-                    "error": f"Directory '{working_dir}' requires approval. Use approve_directory tool with session_id '{session_id}'.",
-                    "requires_directory_approval": True,
-                    "directory": working_dir,
-                    "session_id": session_id,
-                }
-
-        # For read commands, bypass command type approval
-        if actual_command_type == "read":
-            # No approval needed for read commands
-            pass
-        # For write and system commands with user confirmation enabled
-        elif actual_command_type in ["write", "system"] and self.config.get(
-            "security", "allow_user_confirmation", True
-        ):
-
-            # Check if we require a session ID (turn off for Claude Desktop compatibility)
-            require_session_id = self.config.get(
-                "security", "require_session_id", False
+            allow_confirmation = self.config.get(
+                "security", "allow_user_confirmation", True
             )
+            approval_session_id = session_id or self.claude_desktop_session_id
 
             # WORKAROUND FOR CLAUDE DESKTOP:
-            # Either auto-approve if no session_id provided OR if require_session_id is False
-            if not session_id or not require_session_id:
+            # Auto-approve if no session_id is provided or require_session_id is off
+            if allow_confirmation and (not session_id or not require_session_id):
                 if not session_id:
                     logger.warning(
                         "No session ID provided, auto-approving command: %s",
@@ -854,57 +626,223 @@ class CommandLineMCP:
                         "Session validation disabled, auto-approving command: %s",
                         command,
                     )
-                # Auto-approve without requiring explicit permission
-                pass
-            # Normal session-based approval when require_session_id is True
+            # Without confirmation only an explicit session approval allows it
             elif not self.session_manager.has_command_approval(
-                session_id, command
+                approval_session_id, command
             ) and not self.session_manager.has_command_type_approval(
-                session_id, actual_command_type
+                approval_session_id, actual_command_type
             ):
                 return {
                     "success": False,
                     "output": "",
-                    "error": f"Command '{command}' requires approval. Use approve_command_type tool with session_id '{session_id}'.",
+                    "error": f"Command '{command}' requires approval. Use "
+                    "approve_command_type tool with session_id "
+                    f"'{approval_session_id}'.",
                     "requires_approval": True,
                     "command_type": actual_command_type,
-                    "session_id": session_id,
+                    "session_id": approval_session_id,
                 }
 
-        # Execute the command
         try:
-            logger.info(f"Executing command: {command}")
-            # Using subprocess with shell=True is necessary for many shell commands,
-            # but we've validated the command for safety already
-            process = await asyncio.create_subprocess_shell(
-                command,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stdout, stderr = await process.communicate()
-
-            output = stdout.decode("utf-8", errors="replace")
-            error = stderr.decode("utf-8", errors="replace")
-
-            # Limit output size to prevent huge responses
-            max_output_size = self.config.get(
-                "output", "max_size", 100 * 1024
-            )  # 100KB default
-            if len(output) > max_output_size:
-                output = (
-                    output[:max_output_size] + "\n... [output truncated due to size]"
-                )
-
-            return {
-                "success": process.returncode == 0,
-                "output": output,
-                "error": error,
-                "exit_code": process.returncode,
-                "command_type": actual_command_type,
-            }
+            logger.info(f"Executing command: {prepared.canonical}")
+            result = await self._run_shell(prepared.canonical, timeout)
         except Exception as e:
             logger.error(f"Error executing command: {str(e)}")
             return {"success": False, "output": "", "error": str(e)}
+        returncode, output, error, stdout_cut, stderr_cut, timed_out = result
+
+        if stdout_cut:
+            output += _TRUNCATED_MARKER
+        if stderr_cut:
+            error += _TRUNCATED_MARKER
+        if timed_out:
+            error += f"\nCommand timed out after {timeout:g} seconds and was stopped"
+
+        return {
+            # Output stopped at the size cap is usable if stderr is complete.
+            "success": not timed_out
+            and (returncode == 0 or (stdout_cut and not stderr_cut)),
+            "output": output,
+            "error": error,
+            "exit_code": returncode,
+            "command_type": actual_command_type,
+            "truncated": stdout_cut or stderr_cut,
+            "timed_out": timed_out,
+        }
+
+    def _command_timeout(self) -> float:
+        """Return ``security.command_timeout``, or the default if invalid."""
+        value = self.config.get("security", "command_timeout")
+        try:
+            timeout = float(value)
+        except (TypeError, ValueError):
+            timeout = 0.0
+        if math.isfinite(timeout) and timeout > 0:
+            return timeout
+        if not self._warned_invalid_timeout:
+            self._warned_invalid_timeout = True
+            logger.warning(
+                f"Invalid security.command_timeout {value!r}; using "
+                f"{_DEFAULT_COMMAND_TIMEOUT} seconds"
+            )
+        return _DEFAULT_COMMAND_TIMEOUT
+
+    def _check_directories(
+        self, directories: Iterable[str], session_id: str | None
+    ) -> dict[str, Any] | None:
+        """Check every directory against the whitelist and session approvals.
+
+        A directory is allowed if it is whitelisted, approved for the session,
+        or (when session IDs are not required) approved in the Claude Desktop
+        session or auto-approved there.
+
+        Args:
+            directories: Normalized directories the command touches
+            session_id: Optional session ID for permission management
+
+        Returns:
+            The approval request for the first denied directory, or ``None``
+            if every directory is allowed.
+        """
+        require_session_id = self.config.get("security", "require_session_id", False)
+        auto_approve_in_desktop = self.config.get_section("security").get(
+            "auto_approve_directories_in_desktop_mode", False
+        )
+        desktop_session_id = self.claude_desktop_session_id
+
+        for directory in directories:
+            if is_directory_whitelisted(directory, self.whitelisted_directories):
+                continue
+            if session_id and self.session_manager.has_directory_approval(
+                session_id, directory
+            ):
+                continue
+            if not require_session_id:
+                if self.session_manager.has_directory_approval(
+                    desktop_session_id, directory
+                ):
+                    continue
+                if auto_approve_in_desktop:
+                    self.session_manager.approve_directory(
+                        desktop_session_id, directory
+                    )
+                    logger.warning(
+                        f"Auto-approving directory access in desktop mode: {directory}"
+                    )
+                    continue
+
+            logger.warning(f"Directory '{directory}' is not whitelisted or approved")
+            if not session_id or not require_session_id:
+                return {
+                    "success": False,
+                    "output": "",
+                    "error": f"Access to directory '{directory}' is not allowed. "
+                    "Only whitelisted directories can be accessed.\n"
+                    "Whitelisted directories include: "
+                    f"{', '.join(self.whitelisted_directories)}\n"
+                    "Note: To request access to this directory, use the "
+                    "approve_directory tool with:\n"
+                    f'  approve_directory(directory="{directory}", '
+                    f'session_id="{desktop_session_id}", remember=True)',
+                    "directory": directory,
+                    "session_id": desktop_session_id,
+                    "requires_directory_approval": True,
+                }
+            return {
+                "success": False,
+                "output": "",
+                "error": f"Directory '{directory}' requires approval. Use "
+                f"approve_directory tool with session_id '{session_id}'.",
+                "requires_directory_approval": True,
+                "directory": directory,
+                "session_id": session_id,
+            }
+        return None
+
+    async def _run_shell(
+        self, canonical: str, timeout: float
+    ) -> tuple[int | None, str, str, bool, bool, bool]:
+        """Run a canonical command string under ``/bin/sh`` with limits.
+
+        The command runs in its own process group with no stdin. The whole
+        group is killed once combined output exceeds ``output.max_size``
+        bytes or ``timeout`` seconds pass.
+
+        Args:
+            canonical: The rendered command from ``prepare_command``
+            timeout: Seconds before the command is killed
+
+        Returns:
+            ``(exit_code, stdout, stderr, stdout_truncated, stderr_truncated,
+            timed_out)``
+        """
+        max_size = int(self.config.get("output", "max_size", 100 * 1024))
+        env = {
+            k: v
+            for k, v in os.environ.items()
+            if k not in _SHELL_STARTUP_ENV and not k.startswith("BASH_FUNC_")
+        }
+
+        process = await asyncio.create_subprocess_exec(
+            "/bin/sh",
+            "-c",
+            "--",
+            canonical,
+            stdin=asyncio.subprocess.DEVNULL,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            start_new_session=True,
+            env=env,
+        )
+        stdout, stderr = bytearray(), bytearray()
+        cut = {"stdout": False, "stderr": False}
+        timed_out = False
+
+        async def drain(
+            stream: asyncio.StreamReader, buffer: bytearray, name: str
+        ) -> None:
+            # Keep reading past the cap: a paused pipe never reaches EOF, and
+            # process.wait() only returns once both pipes are closed.
+            while chunk := await stream.read(_READ_CHUNK_SIZE):
+                room = max(max_size - len(stdout) - len(stderr), 0)
+                buffer += chunk[:room]
+                if len(chunk) > room:
+                    if not any(cut.values()):
+                        _kill_process_group(process)
+                    cut[name] = True
+
+        async def collect() -> int:
+            assert process.stdout is not None and process.stderr is not None
+            await asyncio.gather(
+                drain(process.stdout, stdout, "stdout"),
+                drain(process.stderr, stderr, "stderr"),
+            )
+            return await process.wait()
+
+        try:
+            try:
+                returncode: int | None = await asyncio.wait_for(collect(), timeout)
+            except asyncio.TimeoutError:
+                timed_out = True
+                _kill_process_group(process)
+                try:
+                    returncode = await asyncio.wait_for(collect(), _KILL_GRACE_SECONDS)
+                except asyncio.TimeoutError:
+                    # A descendant that left the process group still holds a pipe.
+                    logger.warning("Command output pipes still open after kill")
+                    returncode = process.returncode
+        finally:
+            if process.returncode is None:
+                _kill_process_group(process)
+
+        return (
+            returncode,
+            stdout.decode("utf-8", errors="replace"),
+            stderr.decode("utf-8", errors="replace"),
+            cut["stdout"],
+            cut["stderr"],
+            timed_out,
+        )
 
     async def run_async(self):
         """Run the MCP server asynchronously."""

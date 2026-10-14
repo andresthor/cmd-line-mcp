@@ -278,7 +278,7 @@ def test_validate_command_with_special_characters():
     # Using no dangerous patterns for this test
     dangerous_patterns = []
 
-    # Test a command with environment variable substitution
+    # Variable expansion is outside the supported syntax, even with no patterns
     result = validate_command(
         "echo $HOME",
         read_commands,
@@ -287,9 +287,8 @@ def test_validate_command_with_special_characters():
         blocked_commands,
         dangerous_patterns,
     )
-    # This should be valid because $HOME is a legitimate env var
-    assert result["is_valid"] is True
-    assert result["command_type"] == "read"
+    assert result["is_valid"] is False
+    assert "Unsupported shell syntax" in result["error"]
 
     # Now use a specific dangerous pattern to test brace expansion
     dangerous_patterns = [r"\$\{.*:\d+:\d+\}"]  # Match ${var:x:y} pattern
@@ -330,10 +329,10 @@ def test_parse_command():
     assert cmd == ""
     assert args == []
 
-    # Test command starting with dash (for pipe continuation)
+    # A segment starting with a dash is not a command
     cmd, args = parse_command("-v pattern")
     assert cmd == ""
-    assert args == ["-v pattern"]
+    assert args == []
 
 
 def test_validate_command_with_separator_control():
@@ -386,7 +385,7 @@ def test_validate_command_with_separator_control():
     assert result["command_type"] is None
     assert "separators" in result["error"].lower()
 
-    # Test ampersand with separators disallowed
+    # Background & is rejected by the lexer regardless of the separator setting
     result = validate_command(
         "ps aux &",
         read_commands,
@@ -398,7 +397,6 @@ def test_validate_command_with_separator_control():
     )
     assert result["is_valid"] is False
     assert result["command_type"] is None
-    assert "separators" in result["error"].lower()
 
 
 def test_command_type_elevation():

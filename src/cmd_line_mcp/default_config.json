@@ -1,7 +1,7 @@
 {
   "server": {
     "name": "cmd-line-mcp",
-    "version": "0.6.0",
+    "version": "0.6.1",
     "description": "MCP server for safely executing command-line tools",
     "log_level": "INFO"
   },
@@ -16,23 +16,21 @@
       "/tmp",
       "/usr/local/share"
     ],
-    "auto_approve_directories_in_desktop_mode": false
+    "auto_approve_directories_in_desktop_mode": false,
+    "command_timeout": 60
   },
   "commands": {
     "read": [
-      "ls", "pwd", "cat", "less", "head", "tail", "grep",
-      "find", "which", "du", "df", "file", "uname", "hostname", 
-      "uptime", "date", "whoami", "id", "env", "history", "man",
-      "info", "help", "sort", "wc"
+      "ls", "pwd", "cat", "head", "tail", "grep",
+      "which", "du", "df", "file", "uname", "hostname",
+      "uptime", "date", "whoami", "id", "wc"
     ],
     "write": [
       "cp", "mv", "rm", "mkdir", "rmdir", "touch", "chmod", "chown",
-      "ln", "echo", "printf", "export", "tar", "gzip", "zip", "unzip",
-      "awk", "sed"
+      "ln", "echo", "printf", "gzip"
     ],
     "system": [
-      "ps", "top", "htop", "who", "netstat", "ifconfig", "ping",
-      "ssh", "scp", "curl", "wget", "xargs"
+      "ps", "who", "netstat", "ifconfig", "ping"
     ],
     "blocked": [
       "sudo", "su", "bash", "sh", "zsh", "ksh", "csh", "fish",
@@ -44,25 +42,27 @@
       "perl", "ruby", "node", "nodejs",
       "lua", "php",
       "tclsh", "wish", "Rscript",
-      "expect", "script"
+      "expect", "script",
+      "env", "xargs", "nice", "nohup", "time", "timeout", "busybox",
+      "command", "builtin", "doas", "watch", "setsid", "stdbuf", "flock",
+      "parallel", "chroot", "strace", "ltrace", "tcsh", "dash", "ash",
+      "osascript", "ssh-agent"
     ],
     "dangerous_patterns": [
       "rm\\s+-rf\\s+/",
-      ">\\s+/dev/(sd|hd|nvme|xvd)",
-      ">\\s+/dev/null",
-      ">\\s+/etc/",
-      ">\\s+/boot/",
-      ">\\s+/bin/",
-      ">\\s+/sbin/",
-      ">\\s+/usr/bin/",
-      ">\\s+/usr/sbin/",
-      ">\\s+/usr/local/bin/",
-      "2>&1",
+      ">>?\\s*/dev/(sd|hd|nvme|xvd)",
+      ">>?\\s*/etc/",
+      ">>?\\s*/boot/",
+      ">>?\\s*/bin/",
+      ">>?\\s*/sbin/",
+      ">>?\\s*/usr/bin/",
+      ">>?\\s*/usr/sbin/",
+      ">>?\\s*/usr/local/bin/",
       "\\$\\(",
       "\\$\\{\\w+\\}",
       "`",
       "system\\s*\\(",
-      "\\bs([/|@#!%,])[^'\"]*?\\1[^'\"]*?\\1[a-zA-Z]*e",
+      "\\bs([/|@#!%,])[^'\"\\s]*?\\1[^'\"\\s]*?\\1[a-zA-Z]*e",
       "-(exec|execdir|ok|okdir)\\s+(\\S+/)?(sh|bash|zsh|ksh|csh|fish|python[23]?|perl|ruby|node|env)\\b",
       "\\benv\\s+(.*\\s)?(sh|bash|zsh|ksh|csh|fish|python[23]?|perl|ruby|node)\\b",
       "\\bxargs\\s+(.*\\s)?(sh|bash|zsh|ksh|csh|fish|python[23]?|perl|ruby|node|env)\\b",
