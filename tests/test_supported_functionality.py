@@ -17,6 +17,14 @@ def default_cmd_lists():
     return config.get_effective_command_lists()
 
 
+@pytest.fixture
+def text_tool_cmd_lists(default_cmd_lists):
+    """Default lists with awk and sed re-added, as a user config would."""
+    lists = {k: list(v) for k, v in default_cmd_lists.items()}
+    lists["write"] += ["awk", "sed"]
+    return lists
+
+
 def _valid(cmd_lists, command, expected_type):
     """Assert a command is valid with the expected type."""
     result = validate_command(
@@ -111,8 +119,16 @@ def test_date(default_cmd_lists):
 
 
 def test_env_bare(default_cmd_lists):
-    """env with no arguments (show environment) must remain valid."""
-    _valid(default_cmd_lists, "env", "read")
+    """env runs other programs, so it is hard-blocked even with no arguments."""
+    result = validate_command(
+        "env",
+        default_cmd_lists["read"],
+        default_cmd_lists["write"],
+        default_cmd_lists["system"],
+        default_cmd_lists["blocked"],
+        default_cmd_lists["dangerous_patterns"],
+    )
+    assert result["is_valid"] is False
 
 
 # ---------------------------------------------------------------------------
@@ -190,63 +206,63 @@ def test_who(default_cmd_lists):
 
 
 # ---------------------------------------------------------------------------
-# Safe awk — text processing without execution
+# Safe awk — user-added, text processing without execution
 # ---------------------------------------------------------------------------
 
 
-def test_awk_print_columns(default_cmd_lists):
+def test_awk_print_columns(text_tool_cmd_lists):
     """awk column extraction must remain valid."""
-    _valid(default_cmd_lists, "ls -la | awk '{print $1, $9}'", "write")
+    _valid(text_tool_cmd_lists, "ls -la | awk '{print $1, $9}'", "write")
 
 
-def test_awk_conditional_filter(default_cmd_lists):
+def test_awk_conditional_filter(text_tool_cmd_lists):
     """awk conditional filtering must remain valid."""
-    _valid(default_cmd_lists, "cat /tmp/file | awk '{if($1>10) print $0}'", "write")
+    _valid(text_tool_cmd_lists, "cat /tmp/file | awk '{if($1>10) print $0}'", "write")
 
 
-def test_awk_field_separator(default_cmd_lists):
+def test_awk_field_separator(text_tool_cmd_lists):
     """awk with custom field separator must remain valid."""
-    _valid(default_cmd_lists, "awk -F: '{print $1}' /tmp/file", "write")
+    _valid(text_tool_cmd_lists, "awk -F: '{print $1}' /tmp/file", "write")
 
 
-def test_awk_arithmetic(default_cmd_lists):
+def test_awk_arithmetic(text_tool_cmd_lists):
     """awk arithmetic must remain valid."""
-    _valid(default_cmd_lists, "awk '{sum += $1} END {print sum}' /tmp/file", "write")
+    _valid(text_tool_cmd_lists, "awk '{sum += $1} END {print sum}' /tmp/file", "write")
 
 
-def test_awk_pattern_match(default_cmd_lists):
+def test_awk_pattern_match(text_tool_cmd_lists):
     """awk pattern matching must remain valid."""
-    _valid(default_cmd_lists, "awk '/pattern/ {print $0}' /tmp/file", "write")
+    _valid(text_tool_cmd_lists, "awk '/pattern/ {print $0}' /tmp/file", "write")
 
 
 # ---------------------------------------------------------------------------
-# Safe sed — substitution without /e flag
+# Safe sed — user-added, substitution without /e flag
 # ---------------------------------------------------------------------------
 
 
-def test_sed_basic_substitution(default_cmd_lists):
+def test_sed_basic_substitution(text_tool_cmd_lists):
     """sed basic substitution must remain valid."""
-    _valid(default_cmd_lists, "sed 's/foo/bar/' /tmp/file", "write")
+    _valid(text_tool_cmd_lists, "sed 's/foo/bar/' /tmp/file", "write")
 
 
-def test_sed_global_substitution(default_cmd_lists):
+def test_sed_global_substitution(text_tool_cmd_lists):
     """sed global substitution must remain valid."""
-    _valid(default_cmd_lists, "echo hello | sed 's/hello/world/g'", "write")
+    _valid(text_tool_cmd_lists, "echo hello | sed 's/hello/world/g'", "write")
 
 
-def test_sed_case_insensitive(default_cmd_lists):
+def test_sed_case_insensitive(text_tool_cmd_lists):
     """sed case-insensitive substitution must remain valid."""
-    _valid(default_cmd_lists, "sed 's/foo/bar/i' /tmp/file", "write")
+    _valid(text_tool_cmd_lists, "sed 's/foo/bar/i' /tmp/file", "write")
 
 
-def test_sed_line_range(default_cmd_lists):
+def test_sed_line_range(text_tool_cmd_lists):
     """sed line range printing must remain valid."""
-    _valid(default_cmd_lists, "sed -n '1,5p' /tmp/file", "write")
+    _valid(text_tool_cmd_lists, "sed -n '1,5p' /tmp/file", "write")
 
 
-def test_sed_delete_lines(default_cmd_lists):
+def test_sed_delete_lines(text_tool_cmd_lists):
     """sed line deletion must remain valid."""
-    _valid(default_cmd_lists, "sed '/^#/d' /tmp/file", "write")
+    _valid(text_tool_cmd_lists, "sed '/^#/d' /tmp/file", "write")
 
 
 # ---------------------------------------------------------------------------
@@ -266,25 +282,31 @@ def test_pipeline_du_sort(default_cmd_lists):
     _valid(default_cmd_lists, "du -h /tmp | sort -h", "read")
 
 
-def test_pipeline_ls_awk(default_cmd_lists):
-    _valid(default_cmd_lists, "ls -la /tmp | awk '{print $5, $9}'", "write")
+def test_pipeline_ls_awk(text_tool_cmd_lists):
+    _valid(text_tool_cmd_lists, "ls -la /tmp | awk '{print $5, $9}'", "write")
 
 
 # ---------------------------------------------------------------------------
-# Safe xargs use
+# xargs runs other programs, so it is hard-blocked whatever it wraps
 # ---------------------------------------------------------------------------
 
 
-def test_xargs_grep(default_cmd_lists):
-    """xargs piped to grep must remain valid."""
-    _valid(default_cmd_lists, "find /tmp -name '*.txt' | xargs grep pattern", "system")
-
-
-def test_xargs_cat(default_cmd_lists):
-    """xargs piped to cat must remain valid."""
-    _valid(default_cmd_lists, "echo /tmp/file | xargs cat", "system")
-
-
-def test_xargs_wc(default_cmd_lists):
-    """xargs piped to wc must remain valid."""
-    _valid(default_cmd_lists, "find /tmp -name '*.txt' | xargs wc -l", "system")
+@pytest.mark.parametrize(
+    "command",
+    [
+        "find /tmp -name '*.txt' | xargs grep pattern",
+        "echo /tmp/file | xargs cat",
+        "find /tmp -name '*.txt' | xargs wc -l",
+    ],
+)
+def test_xargs_hard_blocked(default_cmd_lists, command):
+    result = validate_command(
+        command,
+        default_cmd_lists["read"],
+        default_cmd_lists["write"],
+        default_cmd_lists["system"],
+        default_cmd_lists["blocked"],
+        default_cmd_lists["dangerous_patterns"],
+    )
+    assert result["is_valid"] is False
+    assert "'xargs' is blocked" in result["error"]
