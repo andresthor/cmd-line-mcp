@@ -1,8 +1,9 @@
 """Additional tests for the server module to improve coverage."""
 
+import asyncio
 import pytest
 import uuid
-from unittest.mock import patch, AsyncMock
+from unittest.mock import patch, AsyncMock, MagicMock
 
 from cmd_line_mcp.server import CommandLineMCP
 
@@ -46,10 +47,6 @@ async def test_execute_command_error_handling(server):
     # let's create a test case that directly tests the error handling behavior
     # by simulating an error condition without actually raising the exception
 
-    # Patch the internal _execute_command method in the server
-    # to return a simulated error result
-    original_method = server._execute_command
-
     # Create a fake result that simulates what happens when an error occurs
     error_result = {
         "success": False,
@@ -83,9 +80,7 @@ async def test_output_truncation_simulation(server):
     )
 
     # Assertions without mocking the actual method
-    assert (
-        len(truncated_output) <= truncated_size + 50
-    )  # Allow for truncation message
+    assert len(truncated_output) <= truncated_size + 50  # Allow for truncation message
     assert "truncated" in truncated_output
 
     # Additionally, verify that the configuration has the max_output_size setting
@@ -114,9 +109,7 @@ async def test_approve_command_type_tool(server):
     assert "approved for this session" in result["message"]
 
     # Verify the approval was stored in the session manager
-    assert server.session_manager.has_command_type_approval(
-        session_id, "write"
-    )
+    assert server.session_manager.has_command_type_approval(session_id, "write")
 
 
 @pytest.mark.asyncio
@@ -139,9 +132,7 @@ async def test_command_validation_mismatch(server):
 
     try:
         # Execute a command with a mismatched command_type parameter
-        result = await server._execute_command(
-            "test_command", command_type="read"
-        )
+        result = await server._execute_command("test_command", command_type="read")
 
         # Check that the mismatch is detected
         assert result["success"] is False
@@ -153,10 +144,12 @@ async def test_command_validation_mismatch(server):
 
 # Add more tests to cover additional code paths
 @pytest.mark.asyncio
-async def test_auto_approval_behavior(server):
+async def test_auto_approval_behavior(server, tmp_path, monkeypatch):
     """Test approval behavior with different configurations."""
     # Make a copy of the original config to restore later
     original_security_config = server.config.config["security"].copy()
+    monkeypatch.chdir(tmp_path)
+    server.whitelisted_directories = [str(tmp_path)]
 
     try:
         # Set allow_user_confirmation to True
@@ -171,28 +164,27 @@ async def test_auto_approval_behavior(server):
         # Create a dummy session record to test session-based approval
         server.session_manager.approve_command_type(session_id, "write")
 
-        # Check that with a pre-approved session, command succeeds
-        validation_result = {
-            "is_valid": True,
-            "command_type": "write",
-            "error": None,
-        }
+        stdout, stderr = asyncio.StreamReader(), asyncio.StreamReader()
+        stdout.feed_data(b"output")
+        stdout.feed_eof()
+        stderr.feed_eof()
+        # A pid no process has, so nothing real can ever be signalled.
+        mock_process = MagicMock(pid=2**30, returncode=0, stdout=stdout, stderr=stderr)
+        mock_process.wait = AsyncMock(return_value=0)
 
-        with patch(
-            "cmd_line_mcp.security.validate_command",
-            return_value=validation_result,
+        with (
+            patch(
+                "asyncio.create_subprocess_exec", return_value=mock_process
+            ) as mock_subprocess,
+            patch("cmd_line_mcp.server._kill_process_group") as mock_kill,
         ):
-            with patch("asyncio.create_subprocess_shell") as mock_subprocess:
-                mock_process = AsyncMock()
-                mock_process.returncode = 0
-                mock_process.communicate.return_value = (b"output", b"")
-                mock_subprocess.return_value = mock_process
-
-                # Test a command with pre-approved session
-                result = await server._execute_command(
-                    "test_command", session_id=session_id
-                )
-                assert "output" in result
+            # Test a write command with pre-approved session
+            result = await server._execute_command("echo hello", session_id=session_id)
+            assert result["success"] is True
+            assert result["output"] == "output"
+            assert result["command_type"] == "write"
+            mock_subprocess.assert_called_once()
+            mock_kill.assert_not_called()
     finally:
         # Restore original config
         server.config.config["security"] = original_security_config

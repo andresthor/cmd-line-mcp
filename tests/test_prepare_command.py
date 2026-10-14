@@ -142,6 +142,24 @@ def test_glob_match_cap(workdir, monkeypatch):
     assert "matches more than 1 entries" in rejection("ls *.txt", workdir)
 
 
+def test_glob_wildcard_component_cap(workdir):
+    assert "more than 3 path components" in rejection("ls */*/*/*/x", workdir)
+    assert prepare("ls */*/*/x", workdir).argv_per_command == (("ls", "*/*/*/x"),)
+
+
+def test_glob_visited_cap_counts_entries_without_matches(workdir, monkeypatch):
+    for name in "defgh":
+        (workdir / "sub" / name).mkdir()
+    monkeypatch.setattr(security, "MAX_GLOB_VISITED", 5)
+    message = rejection("ls */*/missing", workdir)
+    assert "requires listing more than 5 entries" in message
+
+
+def test_glob_time_cap(workdir, monkeypatch):
+    monkeypatch.setattr(security, "MAX_GLOB_SECONDS", -1)
+    assert "takes too long to expand" in rejection("ls *.txt", workdir)
+
+
 # ---------------------------------------------------------------------------
 # Classification
 # ---------------------------------------------------------------------------

@@ -5,12 +5,14 @@ the string, applies policy to the expanded argv, collects every path the
 command touches and renders the canonical string to execute.
 """
 
+import fnmatch
 import glob
 import itertools
 import logging
 import os
 import re
 import stat
+import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -47,6 +49,10 @@ logger = logging.getLogger(__name__)
 
 MAX_GLOB_MATCHES = 1000
 MAX_TOTAL_GLOB_MATCHES = 10000
+MAX_GLOB_WILDCARD_COMPONENTS = 3
+# Directory entries listed, and seconds spent, expanding all globs of a command.
+MAX_GLOB_VISITED = 10000
+MAX_GLOB_SECONDS = 2.0
 
 COMMAND_TYPES = ("read", "write", "system")
 
@@ -173,9 +179,11 @@ def expand(parsed: ParsedCommand, cwd: str) -> ExpandedCommand:
     cannot be read as options.
 
     Raises:
-        CommandRejected: A glob matches too many entries.
+        CommandRejected: A glob matches too many entries or is too costly
+            to expand.
     """
     total = 0
+    budget = _GlobBudget()
     argvs: list[tuple[str, ...]] = []
     targets: list[tuple[str | None, ...]] = []
     from_glob: list[tuple[bool, ...]] = []
@@ -183,7 +191,7 @@ def expand(parsed: ParsedCommand, cwd: str) -> ExpandedCommand:
         argv = [cmd.name]
         globbed = [False]
         for word in cmd.words[1:]:
-            matches = _glob(word, cwd) if word.glob else []
+            matches = _glob(word, cwd, budget) if word.glob else []
             total += len(matches)
             if total > MAX_TOTAL_GLOB_MATCHES:
                 raise CommandRejected(
@@ -514,11 +522,35 @@ def _expand_tilde(word: Word) -> str:
     return os.path.expanduser(word.text) if word.tilde else word.text
 
 
-def _glob(word: Word, cwd: str) -> list[str]:
+@dataclass
+class _GlobBudget:
+    """Entries listed and time left for expanding the globs of one command."""
+
+    visited: int = 0
+    deadline: float = field(default_factory=lambda: time.monotonic() + MAX_GLOB_SECONDS)
+
+    def charge(self, text: str) -> None:
+        self.visited += 1
+        if self.visited > MAX_GLOB_VISITED:
+            raise CommandRejected(
+                f"'{text}' requires listing more than {MAX_GLOB_VISITED} entries"
+            )
+        if time.monotonic() > self.deadline:
+            raise CommandRejected(f"'{text}' takes too long to expand")
+
+
+def _glob(word: Word, cwd: str, budget: _GlobBudget) -> list[str]:
     pattern = word.glob_pattern
+    wildcards = sum(glob.has_magic(part) for part in pattern.split("/"))
+    if wildcards > MAX_GLOB_WILDCARD_COMPONENTS:
+        raise CommandRejected(
+            f"'{word.text}' has wildcards in more than "
+            f"{MAX_GLOB_WILDCARD_COMPONENTS} path components"
+        )
     if word.tilde:
         # $HOME is substituted before globbing, so its characters are literal.
         pattern = glob.escape(os.path.expanduser("~")) + pattern[1:]
+    _walk_glob(pattern, cwd, budget, word.text)
     found = list(
         itertools.islice(glob.iglob(pattern, root_dir=cwd), MAX_GLOB_MATCHES + 1)
     )
@@ -527,6 +559,38 @@ def _glob(word: Word, cwd: str) -> list[str]:
             f"'{word.text}' matches more than {MAX_GLOB_MATCHES} entries"
         )
     return ["./" + m if m.startswith("-") else m for m in sorted(found)]
+
+
+def _walk_glob(pattern: str, cwd: str, budget: _GlobBudget, text: str) -> None:
+    """Charge ``budget`` for every entry expanding ``pattern`` lists.
+
+    iglob yields only matches, so consuming it cannot bound a pattern that
+    lists many directories and matches nothing.
+    """
+    parts = pattern.split("/")
+    candidates = [cwd]
+    if pattern.startswith("/"):
+        parts, candidates = parts[1:], ["/"]
+    for index, part in enumerate(parts):
+        if not glob.has_magic(part):
+            candidates = [os.path.join(c, part) for c in candidates]
+            continue
+        last = index == len(parts) - 1
+        matched = []
+        for directory in candidates:
+            try:
+                with os.scandir(directory) as entries:
+                    for entry in entries:
+                        budget.charge(text)
+                        if entry.name.startswith(".") and not part.startswith("."):
+                            continue
+                        if fnmatch.fnmatchcase(entry.name, part) and (
+                            last or entry.is_dir()
+                        ):
+                            matched.append(entry.path)
+            except OSError:
+                continue
+        candidates = matched
 
 
 def _collect_paths(
