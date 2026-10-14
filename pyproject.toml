@@ -7,18 +7,29 @@ name = "cmd-line-mcp"
 version = "0.6.1"
 description = "Command-line MCP server for safe command execution"
 readme = "README.md"
-authors = [{ name = "Your Name", email = "andresthor@gmail.com" }]
+authors = [{ name = "Andres Saemundsson", email = "andresthor@gmail.com" }]
 license = { text = "MIT" }
 classifiers = [
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
   "License :: OSI Approved :: MIT License",
-  "Operating System :: OS Independent",
+  "Operating System :: POSIX",
+  "Operating System :: MacOS",
 ]
+keywords = ["mcp", "claude", "command-line", "shell", "security"]
 requires-python = ">=3.10"
 dependencies = ["mcp>=1.6.0,<2"]
+
+[project.urls]
+Homepage = "https://github.com/andresthor/cmd-line-mcp"
+Repository = "https://github.com/andresthor/cmd-line-mcp"
+Issues = "https://github.com/andresthor/cmd-line-mcp/issues"
+Changelog = "https://github.com/andresthor/cmd-line-mcp/blob/main/CHANGELOG.md"
+Security = "https://github.com/andresthor/cmd-line-mcp/blob/main/docs/SECURITY.md"
 
 [project.optional-dependencies]
 dev = [

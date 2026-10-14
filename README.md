@@ -49,7 +49,7 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 Restart Claude Desktop after saving.
 
 > [!WARNING]
-> `require_session_id: false` is the default and prevents approval loops in Claude Desktop, but it auto-approves write and system commands; set `allow_user_confirmation: false` to require explicit approval instead. The model can request that approval itself through `approve_command_type`, so your client's tool confirmation is the real gate. `auto_approve_directories_in_desktop_mode: true` turns off directory confinement entirely. See [docs/SECURITY.md](docs/SECURITY.md#known-limitations).
+> `require_session_id: false` is the default and prevents approval loops in Claude Desktop, but it auto-approves write and system commands; set `allow_user_confirmation: false` to require explicit approval instead. The model can request that approval itself through `approve_command_type`, so your client's tool confirmation is the real gate. `auto_approve_directories_in_desktop_mode: true` turns off directory confinement entirely. See [docs/SECURITY.md](https://github.com/andresthor/cmd-line-mcp/blob/main/docs/SECURITY.md#known-limitations).
 
 ---
 
@@ -80,7 +80,7 @@ Pipes, `;`, `&&` and `||` are supported, and each command is validated independe
 - **Blocked list** — adds `dd`, `mkfs`, `mount`, `shutdown` and similar; configurable.
 - **Dangerous patterns** — configurable regexes, by default covering writes to system paths, `rm -rf /`, `tar` command execution and `find -exec` with `sh`, `bash`, `zsh`, `ksh`, `csh`, `fish`, `python`/`python2`/`python3`, `perl`, `ruby`, `node` or `env`. Commands whose options can write files or run other programs (`find`, `sort`, `tar`, `zip`, `unzip`, `curl`, `wget`) are left out of the defaults until per-command argument rules exist; adding them to your config re-enables those options.
 
-See [docs/SECURITY.md](docs/SECURITY.md) for the full lists, the threat model and known limitations.
+See [docs/SECURITY.md](https://github.com/andresthor/cmd-line-mcp/blob/main/docs/SECURITY.md) for the full lists, the threat model and known limitations.
 
 ---
 
@@ -96,7 +96,7 @@ export CMD_LINE_MCP_SECURITY_WHITELISTED_DIRECTORIES="/projects,/var/data"
 export CMD_LINE_MCP_COMMANDS_READ="jq,rg"
 ```
 
-See [docs/CONFIGURATION.md](docs/CONFIGURATION.md) for full configuration reference, MCP tool documentation, and directory security details.
+See [docs/CONFIGURATION.md](https://github.com/andresthor/cmd-line-mcp/blob/main/docs/CONFIGURATION.md) for full configuration reference, MCP tool documentation, and directory security details.
 
 ---
 
