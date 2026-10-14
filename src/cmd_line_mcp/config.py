@@ -83,7 +83,9 @@ class Config:
                     logger.info(f"Loaded default configuration from {resource}")
                     return
 
-            logger.error("Bundled default_config.json not found - using empty configuration")
+            logger.error(
+                "Bundled default_config.json not found - using empty configuration"
+            )
             # If we get here, we couldn't find the default config anywhere
             # Initialize with empty structure to prevent errors
             self.config = {

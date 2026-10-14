@@ -57,7 +57,7 @@ MAX_GLOB_SECONDS = 2.0
 COMMAND_TYPES = ("read", "write", "system")
 
 SEPARATORS_DISABLED_ERROR = (
-    "Command separators (|, ;, &) are not allowed in the current configuration"
+    "Command separators (|, ;, &&, ||) are not allowed in the current configuration"
 )
 
 # Commands whose operands are files or directories.
